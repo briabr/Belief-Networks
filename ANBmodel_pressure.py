@@ -14,11 +14,12 @@ import time
 from joblib import Parallel, delayed
 import multiprocessing
 import igraph as ig
+import glob
 
 # FIXED PARAMETERS
 M = 10
 focal = 0
-n_agents = 100
+n_agents = 10
 tau = 1
 ext_belief = focal
 fixedBNat100 = False
@@ -82,14 +83,12 @@ meta_cols = ["t", "id"]
 metric_cols = [
     "Hpers",
     "Hpersfoc",
-    # "Hsoc",
     "Hext",
     "tb_tot",
     "tb_foc",
     "absOm_tot",
     "absOm_foc",
     "clust",
-    # "clust_foc",
     "bc_foc",
     "expI",
     "x_focal",
@@ -207,16 +206,6 @@ def get_energies(t, agents, params):
             for n in range(n_agents)
         ]
     )
-    # Hsoc = [
-    #     (
-    #         -params["rho"]
-    #         * agents[n][beliefids][focal]
-    #         * np.nanmean(agents[nb_list[n]][:, beliefids[focal]])
-    #         if len(nb_list[n]) > 0
-    #         else 0
-    #     )
-    #     for n in range(n_agents)
-    # ]
 
     return Hpers, Hpersfoc, Hext
 
@@ -266,15 +255,6 @@ def get_metrics(agents):
 
     bc_foc = np.array([bc_focal_for_agent(a) for a in range(n_agents)])
 
-    # bc = np.zeros(n_agents)
-    # for a in range(n_agents):
-    #     G = nx.Graph()
-    #     for i, j in edge_list:
-    #         w = absA[a, i, j]
-    #         if w > 0:
-    #             G.add_edge(i, j, dist=1.0 / (w + eps_val), weight=A[a,i,j])
-    #     bc[a] = nx.betweenness_centrality(G, weight="dist", normalized=False)[focal]
-
     return (
         tri_balance_tot,
         tri_balance_foc,
@@ -288,7 +268,6 @@ def get_metrics(agents):
 
 
 def fill_metrics(t, agents, params):
-    # agents[:, 2] = [len(nbs) for nbs in nb_list]
     Hpers, Hpersfoc, Hext = get_energies(t, agents, params)
     tb_tot, tb_foc, absOm_tot, absOm_foc, clust, bc_foc, expI = get_metrics(agents)
     agents[:, 2] = Hpers
@@ -410,9 +389,7 @@ def run_simulation(params):
     np.random.seed(params["seed"])
     eps, beta, ext_strength = (
         params["eps"],
-        # params["mu"],
         params["beta"],
-        # params["rho"],
         params["ext_strength"],
     )
     agents = initialise_agents(params["init_w"])
@@ -426,28 +403,15 @@ def run_simulation(params):
         curr_ext_strength = ext_strength if t in ext_time else 0
         np.random.shuffle(agentids)
         for n in agentids:
-            # social_beliefs = agents[nb_list[n]][:, beliefids[focal]]
-            # summed_social_beliefs = (
-            #     0 if len(social_beliefs) == 0 else np.sum(social_beliefs)
-            # )
             agents[n] = update_belief(
                 agents[n], curr_ext_strength, beta
             )
             if fixedBNat100 and (t >= ext_time[0]):
                 pass
             else:
-                # mu_c = 0 if len(nb_list[n]) == 0 else mu
-                # mu_c = (
-                #     mu_c if (not params["fixedBNat100"] or not t > ext_time[0]) else 0
-                # )
                 eps_c = (
                     eps if (not params["fixedBNat100"] or not t > ext_time[0]) else 0
                 )
-                # mean_social_edges = 
-                #     0
-                # #     if len(nb_list[n]) == 0
-                # #     else agents[nb_list[n]][:, edgeids].mean(axis=0)
-                # # )
                 agents[n, edgeids] = update_edge_weights(
                     agents[n], eps_c
                 )
@@ -463,10 +427,6 @@ def run_simulation(params):
 
 def run_one(seed, init_w, beta, eps, fixedBNat100, ext_strength):
 
-    # results_folder = (
-    #     f"{time.gmtime().tm_year}-{time.gmtime().tm_mon:02d}-{time.gmtime().tm_mday:02d}"
-    #     + "_simOut/"
-    # )
     results_folder = "simOut/"
     if not os.path.isdir(results_folder):
         os.mkdir(results_folder)
@@ -475,9 +435,7 @@ def run_one(seed, init_w, beta, eps, fixedBNat100, ext_strength):
     params = {
         "init_w": init_w,
         "beta": beta,
-        # "rho": rho,
         "eps": eps,
-        # "mu": mu,
         "fixedBNat100": fixedBNat100,
         "ext_strength": ext_strength,
         "seed": seed,
@@ -517,6 +475,7 @@ def run_one(seed, init_w, beta, eps, fixedBNat100, ext_strength):
             out[k] = v
 
         out.to_csv(fname + ("_detailed" if detail else "") + ".csv")
+        print("Saved:", fname + "_detailed.csv")
     return fname
 
 
@@ -525,50 +484,23 @@ def run_one(seed, init_w, beta, eps, fixedBNat100, ext_strength):
 if __name__ == "__main__":
     # init_w = 0.2
     beta = 3.0
-    # rho = 1.0 / 3.0
-    # eps = 1.0
-    # mu = 0.0
-    # ext_strength = 4
+    # ext_strength = 0
     fixedBNat100 = False
 
-    # param_combis = [
-    #     [link_prob, init_w, beta, rho, eps, mu, fixedBNat100]
-    #     for init_w, eps, mu, fixedBNat100 in [
-    #         (0.2, 0.0, 0.0, False),
-    #         (0.8, 0.0, 0.0, False),
-    #         (0.2, 1.0, 0.0, True),
-    #         (0.2, 1.0, 0.0, False),
-    #     ]
-    # ]
-
-    # mu = 0.0
-    # init_w=0.2
-    eps =0.0
+    eps = 0
     param_combis = [
-        [init_w, beta, eps, fixedBNat100]
-        for init_w in [0.1,0.4
-        ]
-    ]
-    
-    # eps = 1.0
-    # init_w=0.2
-    # param_combis = [
-    #     [link_prob, init_w, beta, rho, eps, mu, fixedBNat100]
-    #     for mu in [0.001,0.002,0.005,0.01,0.02,0.05,0.1,0.2,0.5, 1.0
-    #     ]
-    # ]
+    [0.2, beta, eps, fixedBNat100]
+]
 
-    pressures =  [4] # [0, 1, 2, 4, 8, 16]
-
+    pressures = [0, 2, 4, 6]
     param_combis = [
         p + [ext_strength] for p in param_combis for ext_strength in pressures
     ]
 
-    seeds = list(range(0, 100))  ## TODO increase
-
-    detail = False
+    seeds = [5]
+    detail = True
     track_times = (
-        np.arange(T + 1)
+         np.arange(T + 1)
         if detail
         else [0, 1]
         + beforeRange
@@ -595,5 +527,27 @@ if __name__ == "__main__":
             for init_w, beta, eps, fixedBNat100, ext_strength, seed in param_combis_withSeed
         )
 
+import matplotlib.pyplot as plt
 
-# %%
+plt.figure(figsize=(8,5))
+
+for pressure in [0, 2, 4, 6]:
+
+    file = (
+        f"simOut/detailed/"
+        f"sim_init_w0.20_beta3.00_eps0.00_"
+        f"ext_strength{pressure}_seed5_detailed.csv"
+    )
+
+    df = pd.read_csv(file)
+
+    mean = df.groupby("t")["x_focal"].mean()
+
+    plt.plot(mean.index, mean.values, label=f"Pressure = {pressure}")
+
+plt.xlabel("Time")
+plt.ylabel("Average focal belief")
+plt.title("Average focal belief under external pressure")
+plt.axvspan(101, 150, color="lightgray", alpha=0.3, label="Pressure period")
+plt.legend()
+plt.show()

@@ -13,6 +13,7 @@ from matplotlib import patches
 from scipy.spatial.distance import pdist, squareform
 import xarray as xr
 import string
+import os
 
 sns.set_style("ticks", {"axes.linewidth": 0.5})
 smallfs = 8
@@ -57,7 +58,7 @@ init_w = 0.2
 eps = 1.0
 mu = 0.0
 fixedBNat100 = False
-seed = 2
+seed = 0
 s = 4
 df = pd.read_csv(
     f"simOut/detailed/sim_link_prob0.10_init_w{init_w:.2f}_beta3.00_rho0.33_eps{eps:.2f}_mu{mu:.3f}_ext_strength{s}_seed{seed}_detailed.csv"

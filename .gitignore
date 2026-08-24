@@ -1,8 +1,5 @@
-archive
-figs
-notes
-processed_data
-sims
-.venv
+venv/
+__pycache__/
+simOut/
+simOut_backup/
 .DS_Store
-venv

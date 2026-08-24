@@ -49,32 +49,28 @@ cmap = dict(
     )
 )
 names = {
-    (0.2, 0.0, 0.0, False): r"staticlow",
-    (0.8, 0.0, 0.0, False): r"statichigh",
-    (0.2, 1.0, 0.0, True): r"adaptive2static",
-    (0.2, 1.0, 0.0, False): r"adaptive",
+    (0.2, 0.0, False): "staticlow",
 }
 namesTex = {
-    (0.2, 0.0, 0.0, False): r"static ($\omega_0=0.2$)",
-    (0.8, 0.0, 0.0, False): r"static ($\omega_0=0.8$)",
-    (0.2, 1.0, 0.0, True): r"adaptive$\rightarrow$static",
-    (0.2, 1.0, 0.0, False): r"adaptive",
+    (0.2, 0.0, False): r"static ($\omega_0=0.2$)",
 }
 # %%
 
-s_exts = [0]
+s_exts = [1, 2, 4, 8, 16]
 seeds = [0]
 res = []
 mean_absedges = []
 param_combis = [
-    (0.2, 0.0, 0.0, False),
-] # init_w, eps, mu, fixedBNatt=100
-for init_w, eps, mu, fixedBNat100 in param_combis:
+    (0.2, 0.0, False),
+]
+for init_w, eps, fixedBNat100 in param_combis:
     for s in s_exts:
         for seed in seeds:
             df = pd.read_csv(
-                f"simOut/sim_link_prob0.10_init_w{init_w:.2f}_beta3.00_rho0.33_eps{eps:.2f}_mu{mu:.3f}{'_fixedBNat100' if fixedBNat100 else ''}_ext_strength{s}_seed{seed}.csv"
-            )
+    f"simOut/sim_init_w{init_w:.2f}_beta{3.00:.2f}_eps{eps:.2f}"
+    f"{'_fixedBNat100' if fixedBNat100 else ''}"
+    f"_ext_strength{s}_seed{seed}.csv"
+)
             W = df.loc[df.t == 100, edges_columns].values
             dists = pdist(W, metric="cityblock")
             groupishness = 0 if eps == 0 else dists.std() / dists.mean()
@@ -89,10 +85,9 @@ for init_w, eps, mu, fixedBNat100 in param_combis:
                 [
                     init_w,
                     eps,
-                    mu,
                     s,
                     fixedBNat100,
-                    namesTex[(init_w, eps, mu, fixedBNat100)],
+                    namesTex[(init_w, eps, fixedBNat100)],
                 ]
                 + df.loc[df.t == 95.5][response_cols]
                 .sum(axis=0)[response_cols]
@@ -104,10 +99,10 @@ for init_w, eps, mu, fixedBNat100 in param_combis:
                 [
                     init_w,
                     eps,
-                    mu,
+                    
                     s,
                     fixedBNat100,
-                    namesTex[(init_w, eps, mu, fixedBNat100)],
+                    namesTex[(init_w, eps,fixedBNat100)],
                 ]
                 + [np.abs(df.loc[df.t == 100, edges_columns].values).mean()]
                 + [df.loc[df.t == 100, edges_columns].values.mean()]
@@ -115,7 +110,7 @@ for init_w, eps, mu, fixedBNat100 in param_combis:
 
 res = pd.DataFrame(
     res,
-    columns=["init_w", "eps", "mu", "s_ext", "fixedBNat100", "name"]
+    columns=["init_w", "eps", "s_ext", "fixedBNat100", "name"]
     + response_cols
     + ["groupishness", "std_focal", "nr_negs"],
 )
@@ -126,7 +121,6 @@ sns.barplot(
         columns=[
             "init_w",
             "eps",
-            "mu",
             "s_ext",
             "fixedBNat100",
             "name",
@@ -145,10 +139,9 @@ sns.barplot(
 # %%
 
 eps = 0.0
-mu = 0.0
 init_w = 0.2
 fixedBNat100 = False
-name = namesTex[(init_w, eps, mu, fixedBNat100)]
+name = namesTex[(init_w, eps, fixedBNat100)]
 fig, axs = plt.subplots(1, 2, sharex=True)
 sns.stripplot(
     res.query(f"name=='{name}'")[response_cols + ["s_ext"]].melt(
@@ -165,12 +158,12 @@ sns.stripplot(
 relres = res[["compliant", "resilient", "resistant", "latecompliant"]].div(
     res[["compliant", "resilient", "resistant", "latecompliant"]].sum(axis=1), axis=0
 )
-for c in ["eps", "mu", "init_w", "s_ext", "fixedBNat100"]:
+for c in ["eps","init_w", "s_ext", "fixedBNat100"]:
     relres[c] = res[c]
 axs[1].set_title("only negative")
 sns.stripplot(
-    relres.query(f"eps=={eps} and mu=={mu} and init_w=={init_w}")
-    .drop(columns=["mu", "eps", "init_w", "fixedBNat100"])
+    relres.query(f"eps=={eps} and init_w=={init_w}")
+    .drop(columns=["eps", "init_w", "fixedBNat100"])
     .melt(id_vars=["s_ext"], var_name="response", value_name="count"),
     hue="response",
     x="s_ext",
@@ -180,7 +173,7 @@ sns.stripplot(
     ax=axs[1],
 )
 fig.suptitle(
-    f"eps={eps}, mu={mu}, init_w={init_w}, {'fixedBNat100' if fixedBNat100 else ''}"
+    f"eps={eps}, init_w={init_w}, {'fixedBNat100' if fixedBNat100 else ''}"
 )
 
 
@@ -189,7 +182,7 @@ relres["s_ext_log2"] = np.log2(relres["s_ext"])
 relres = relres.loc[relres.s_ext > 0]
 
 seedExample = 0
-pressurestrengthExample = 0
+pressurestrengthExample = 4
 T = 200
 fig, axs = plt.subplot_mosaic(
     [["t"] * 4, ["1", "2", "3", "4"]], figsize=(18 / 2.54, 10 / 2.54)
@@ -205,7 +198,7 @@ for ax, eps, init_w, fixedBNat100 in zip(
 ):
     ax = axs[str(ax)]
     subset = relres.query(
-        f"eps == {eps} and init_w=={init_w} and mu=={mu} and fixedBNat100=={fixedBNat100}"
+        f"eps == {eps} and init_w=={init_w} and fixedBNat100=={fixedBNat100}"
     )
     subset = subset[["compliant", "resilient", "resistant", "s_ext_log2"]].melt(
         id_vars="s_ext_log2", value_name="normalized_count", var_name="response"
@@ -269,7 +262,7 @@ for ax, eps, init_w, fixedBNat100 in zip(
         )
     ax.set_ylabel("relative response frequency", fontsize=bigfs, va="center")
     ax.set_title(
-        namesTex[(init_w, eps, mu, fixedBNat100)],
+        namesTex[(init_w, eps, fixedBNat100)],
         fontsize=bigfs,
         x=0.98,
         y=0.99,
@@ -298,7 +291,9 @@ axs["1"].text(
 )
 ax_main = axs["t"]
 examplesimadaptive = pd.read_csv(
-    f"simOut/detailed/sim_link_prob0.10_init_w{init_w:.2f}_beta3.00_rho0.33_eps{eps:.2f}_mu{mu:.3f}_{'fixedBNat100_' if fixedBNat100 else ''}ext_strength{pressurestrengthExample}_seed{seedExample}_detailed.csv"
+    f"simOut/detailed/sim_init_w{init_w:.2f}_beta{3.00:.2f}_eps{eps:.2f}"
+    f"{'_fixedBNat100' if fixedBNat100 else ''}"
+    f"_ext_strength{pressurestrengthExample}_seed{seedExample}_detailed.csv"
 )
 beliefs = examplesimadaptive[["id", "t"] + ["0"]].pivot_table(
     index="t", columns="id", values="0"
@@ -403,7 +398,7 @@ axs["t"].text(135, -0.1, r"$\uparrow$", ha="center", fontsize=bigfs + 15)
 axs["t"].text(
     0.5,
     1.02,
-    rf"example simulation with {namesTex[((0.2, 1.0, 0.0, False))]} belief network, $s="
+    rf"example simulation with {namesTex[(init_w, eps, fixedBNat100)]} belief network, $s="
     + f"{s_ext}{'$, smoothed' if window>0 else '$'}",
     transform=axs["t"].transAxes,
     ha="center",
@@ -457,7 +452,7 @@ res.groupby("name").std_focal.std()
 # %%
 pd.DataFrame(
     mean_absedges,
-    columns=["init_w", "eps", "mu", "s", "fixedBNat100", "name", "absOm_tot", "Om_tot"],
+columns=["init_w", "eps", "s_ext", "fixedBNat100", "name", "absOm_tot", "Om_tot"]
 ).groupby("name").absOm_tot.mean()
 
 # %%

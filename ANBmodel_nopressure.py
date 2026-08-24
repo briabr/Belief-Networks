@@ -14,6 +14,8 @@ import time
 from joblib import Parallel, delayed
 import multiprocessing
 import igraph as ig
+import matplotlib.pyplot as plt
+import glob
 
 # FIXED PARAMETERS
 M = 10
@@ -82,14 +84,12 @@ meta_cols = ["t", "id"]
 metric_cols = [
     "Hpers",
     "Hpersfoc",
-    # "Hsoc",
     "Hext",
     "tb_tot",
     "tb_foc",
     "absOm_tot",
     "absOm_foc",
     "clust",
-    # "clust_foc",
     "bc_foc",
     "expI",
     "x_focal",
@@ -207,16 +207,6 @@ def get_energies(t, agents, params):
             for n in range(n_agents)
         ]
     )
-    # Hsoc = [
-    #     (
-    #         -params["rho"]
-    #         * agents[n][beliefids][focal]
-    #         * np.nanmean(agents[nb_list[n]][:, beliefids[focal]])
-    #         if len(nb_list[n]) > 0
-    #         else 0
-    #     )
-    #     for n in range(n_agents)
-    # ]
 
     return Hpers, Hpersfoc, Hext
 
@@ -266,15 +256,6 @@ def get_metrics(agents):
 
     bc_foc = np.array([bc_focal_for_agent(a) for a in range(n_agents)])
 
-    # bc = np.zeros(n_agents)
-    # for a in range(n_agents):
-    #     G = nx.Graph()
-    #     for i, j in edge_list:
-    #         w = absA[a, i, j]
-    #         if w > 0:
-    #             G.add_edge(i, j, dist=1.0 / (w + eps_val), weight=A[a,i,j])
-    #     bc[a] = nx.betweenness_centrality(G, weight="dist", normalized=False)[focal]
-
     return (
         tri_balance_tot,
         tri_balance_foc,
@@ -288,7 +269,6 @@ def get_metrics(agents):
 
 
 def fill_metrics(t, agents, params):
-    # agents[:, 2] = [len(nbs) for nbs in nb_list]
     Hpers, Hpersfoc, Hext = get_energies(t, agents, params)
     tb_tot, tb_foc, absOm_tot, absOm_foc, clust, bc_foc, expI = get_metrics(agents)
     agents[:, 2] = Hpers
@@ -410,9 +390,7 @@ def run_simulation(params):
     np.random.seed(params["seed"])
     eps, beta, ext_strength = (
         params["eps"],
-        # params["mu"],
         params["beta"],
-        # params["rho"],
         params["ext_strength"],
     )
     agents = initialise_agents(params["init_w"])
@@ -423,31 +401,18 @@ def run_simulation(params):
     # Main simulation loop
     time_steps = np.arange(0, T + 1, 1)
     for t in time_steps[1:]:
-        curr_ext_strength = ext_strength if t in ext_time else 0
+        curr_ext_strength = 0
         np.random.shuffle(agentids)
         for n in agentids:
-            # social_beliefs = agents[nb_list[n]][:, beliefids[focal]]
-            # summed_social_beliefs = (
-            #     0 if len(social_beliefs) == 0 else np.sum(social_beliefs)
-            # )
             agents[n] = update_belief(
                 agents[n], curr_ext_strength, beta
             )
             if fixedBNat100 and (t >= ext_time[0]):
                 pass
             else:
-                # mu_c = 0 if len(nb_list[n]) == 0 else mu
-                # mu_c = (
-                #     mu_c if (not params["fixedBNat100"] or not t > ext_time[0]) else 0
-                # )
                 eps_c = (
                     eps if (not params["fixedBNat100"] or not t > ext_time[0]) else 0
                 )
-                # mean_social_edges = 
-                #     0
-                # #     if len(nb_list[n]) == 0
-                # #     else agents[nb_list[n]][:, edgeids].mean(axis=0)
-                # # )
                 agents[n, edgeids] = update_edge_weights(
                     agents[n], eps_c
                 )
@@ -463,10 +428,6 @@ def run_simulation(params):
 
 def run_one(seed, init_w, beta, eps, fixedBNat100, ext_strength):
 
-    # results_folder = (
-    #     f"{time.gmtime().tm_year}-{time.gmtime().tm_mon:02d}-{time.gmtime().tm_mday:02d}"
-    #     + "_simOut/"
-    # )
     results_folder = "simOut/"
     if not os.path.isdir(results_folder):
         os.mkdir(results_folder)
@@ -475,9 +436,7 @@ def run_one(seed, init_w, beta, eps, fixedBNat100, ext_strength):
     params = {
         "init_w": init_w,
         "beta": beta,
-        # "rho": rho,
         "eps": eps,
-        # "mu": mu,
         "fixedBNat100": fixedBNat100,
         "ext_strength": ext_strength,
         "seed": seed,
@@ -517,6 +476,22 @@ def run_one(seed, init_w, beta, eps, fixedBNat100, ext_strength):
             out[k] = v
 
         out.to_csv(fname + ("_detailed" if detail else "") + ".csv")
+        summary = out[out["t"] == 200][
+    [
+        "id",
+        "x_focal",
+        "Hpers",
+        "absOm_tot",
+        "absOm_foc",
+        "clust",
+        "eps",
+        "init_w",
+        "seed"
+    ]
+]
+
+        summary.to_csv(fname + "_summary.csv")
+        print(summary.to_string(index=False))
     return fname
 
 
@@ -525,48 +500,26 @@ def run_one(seed, init_w, beta, eps, fixedBNat100, ext_strength):
 if __name__ == "__main__":
     # init_w = 0.2
     beta = 3.0
-    # rho = 1.0 / 3.0
-    # eps = 1.0
-    # mu = 0.0
-    # ext_strength = 4
+    # ext_strength = 0
     fixedBNat100 = False
 
-    # param_combis = [
-    #     [link_prob, init_w, beta, rho, eps, mu, fixedBNat100]
-    #     for init_w, eps, mu, fixedBNat100 in [
-    #         (0.2, 0.0, 0.0, False),
-    #         (0.8, 0.0, 0.0, False),
-    #         (0.2, 1.0, 0.0, True),
-    #         (0.2, 1.0, 0.0, False),
-    #     ]
-    # ]
+   
+    param_combis = []
 
-    # mu = 0.0
-    # init_w=0.2
-    eps =0.0
-    param_combis = [
-        [init_w, beta, eps, fixedBNat100]
-        for init_w in [0.1,0.4
-        ]
-    ]
-    
-    # eps = 1.0
-    # init_w=0.2
-    # param_combis = [
-    #     [link_prob, init_w, beta, rho, eps, mu, fixedBNat100]
-    #     for mu in [0.001,0.002,0.005,0.01,0.02,0.05,0.1,0.2,0.5, 1.0
-    #     ]
-    # ]
+for eps in [0, 1]:
+    param_combis.append([0.1, beta, eps, False, 0])
+    param_combis.append([0.4, beta, eps, False, 0])
 
-    pressures =  [4] # [0, 1, 2, 4, 8, 16]
+    seeds = [0,1,2,3,4]
 
-    param_combis = [
-        p + [ext_strength] for p in param_combis for ext_strength in pressures
-    ]
+    param_combis_withSeed = [
+    param_combi + [seed]
+    for param_combi in param_combis
+    for seed in seeds
+]
 
-    seeds = list(range(0, 100))  ## TODO increase
-
-    detail = False
+    seeds = [0, 1, 2, 3, 4]  ## TODO increase
+    detail = True
     track_times = (
         np.arange(T + 1)
         if detail
@@ -594,6 +547,126 @@ if __name__ == "__main__":
             )
             for init_w, beta, eps, fixedBNat100, ext_strength, seed in param_combis_withSeed
         )
+        # read one simulation output
 
+        metric = "Hpers"      # Change to: clust, absOm_tot, absOm_foc, bc_foc, expI
 
-# %%
+plt.figure(figsize=(8,5))
+
+for eps_value in ["eps0.00", "eps1.00"]:
+
+    files = [
+        f for f in glob.glob(f"simOut/detailed/*{eps_value}*ext_strength0*.csv")
+        if "summary" not in f
+    ]
+
+    all_runs = []
+
+    for file in files:
+        df = pd.read_csv(file)
+        all_runs.append(df.groupby("t")[metric].mean())
+
+    mean_metric = pd.concat(all_runs, axis=1).mean(axis=1)
+
+    plt.plot(mean_metric.index,
+             mean_metric.values,
+             linewidth=2,
+             label=f"ε = {eps_value[-4:]}")
+
+plt.xlabel("Time")
+plt.ylabel(metric)
+plt.title(f"{metric} over time (No external pressure)")
+plt.legend()
+plt.grid(alpha=0.3)
+plt.show()
+
+# plt.figure(figsize=(8,5))
+
+# for eps_value in ["eps0.00", "eps1.00"]:
+
+#     files = [
+#         f for f in glob.glob(f"simOut/detailed/*{eps_value}*ext_strength0*.csv")
+#         if "summary" not in f
+#     ]
+
+#     print("\nFiles used for", eps_value)
+#     for f in files:
+#         print(f)
+
+#     all_runs = []
+
+#     for file in files:
+#         df = pd.read_csv(file)
+
+#         mean = df.groupby("t")["x_focal"].mean()
+#         all_runs.append(mean)
+
+#     mean_across_runs = pd.concat(all_runs, axis=1).mean(axis=1)
+
+#     plt.plot(
+#         mean_across_runs.index,
+#         mean_across_runs.values,
+#         label=eps_value
+#     )
+
+# plt.xlabel("Time")
+# plt.ylabel("Average focal belief")
+# plt.title("Internal adaptation of focal belief (no external pressure)")
+# plt.axhline(0, linestyle="--")
+# plt.legend()
+# plt.show()
+# # for agent in df["id"].unique():
+# #     agent_data = df[df["id"] == agent]
+
+# #     plt.plot(
+# #         agent_data["t"],
+# #         agent_data["x_focal"],
+# #         alpha=0.5
+# #     )
+
+# # plt.xlabel("Time")
+# # plt.ylabel("Focal belief")
+# # plt.title("Individual focal belief trajectories")
+# # plt.axhline(0, linestyle="--")
+# # plt.show()
+
+# file = "simOut/detailed/sim_init_w0.10_beta3.00_eps0.00_ext_strength0_seed0_detailed.csv"
+
+# df = pd.read_csv(file)
+
+# plt.figure(figsize=(8,5))
+
+# for agent in df["id"].unique():
+#     agent_data = df[df["id"] == agent]
+
+#     plt.plot(
+#         agent_data["t"],
+#         agent_data["x_focal"],
+#         alpha=0.5
+#     )
+
+# plt.xlabel("Time")
+# plt.ylabel("Focal belief")
+# plt.title("Individual focal belief trajectories (eps=0)")
+# plt.axhline(0, linestyle="--")
+# plt.show()
+
+# file = "simOut/detailed/sim_init_w0.10_beta3.00_eps1.00_ext_strength0_seed0_detailed.csv"
+# df = pd.read_csv(file)
+
+# plt.figure(figsize=(8,5))
+
+# for agent in df["id"].unique():
+#     agent_data = df[df["id"] == agent]
+
+#     plt.plot(
+#         agent_data["t"],
+#         agent_data["x_focal"],
+#         alpha=0.5
+#     )
+
+# plt.xlabel("Time")
+# plt.ylabel("Focal belief")
+# plt.title("Individual focal belief trajectories (eps=0)")
+# plt.axhline(0, linestyle="--")
+# plt.show()

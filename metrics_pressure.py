@@ -43,33 +43,29 @@ cmapS = dict(
 metric2title = dict(
     x_focal=r"$x_{foc}$",
     extr_nonfoc=r"$|X_{non\text{-}foc}|$",
-    n_nbs=r"$|\mathcal{K}|$",
     absOm_tot=r"BN-$|\Omega|$",
     absOm_foc=r"BN-$|\Omega_{foc}|$",
     tb_tot=r"BN-$\alpha$",
     tb_foc=r"BN-$\alpha_{foc}$",
     clust=r"BN-clust",
-    bc=r"BN-centr$_{foc}$",
+    bc_foc=r"BN-centr$_{foc}$",
     # bn_expected_influence = r"$\langle\delta x_{foc}\rangle$",
     Hpersfoc=r"$D_\mathrm{BN\text{-}foc}$",
     Hpersnonfoc=r"$D_\mathrm{BN\text{-}non\text{-}foc}$",
-    Hsoc=r"$D_{social}$",
     # external_energy = r"$D_{ext}$",
     # energy = r"$D_{tot}$",
 )
 metric2titleVerb = dict(
     x_focal=r"focal belief",
     extr_nonfoc=r"extremity non-focal beliefs",
-    n_nbs=r"nr social contacts",
     absOm_tot=r"connectedness BN",
     absOm_foc=r"connectedness focal BN",
     tb_tot=r"balance BN",
     tb_foc=r"balance focal BN",
     clust=r"clustering BN",
-    bc=r"BN focal centrality",
+    bc_foc=r"BN focal centrality",
     Hpersfoc=r"focal BN dissonance",
     Hpersnonfoc=r"non-focal BN dissonance",
-    Hsoc=r"focal social dissonance",
 )
 
 response_cols = [
@@ -88,32 +84,28 @@ belief_columns = [str(int(a)) for a in belief_dimensions]
 edgelist = list(combinations(belief_dimensions, 2))
 edges_columns = [f"w{a}{b}" for a, b in edgelist]
 metric_cols = [
-    "n_nbs",
     "Hpers",
     "Hpersfoc",
-    "Hsoc",
     "Hext",
     "tb_tot",
     "tb_foc",
     "absOm_tot",
     "absOm_foc",
     "clust",
-    "bc",
+    "bc_foc",
     "expI",
     "x_focal",
     "extr_nonfoc",
 ]
 metric_cols2 = [
-    "n_nbs",
     "Hpersnonfoc",
     "Hpersfoc",
-    "Hsoc",
     "tb_tot",
     "tb_foc",
     "absOm_tot",
     "absOm_foc",
     "clust",
-    "bc",
+    "bc_foc",
     "x_focal",
     "extr_nonfoc",
 ]
@@ -127,12 +119,8 @@ cmap = dict(
     )
 )
 names = {
-    (0.2, 0.0, 0.0, False): r"static ($\omega_0=0.2$)",
-    (0.2, 1.0, 0.0, False): r"adaptive",
-    (0.8, 0.0, 0.0, False): r"static ($\omega_0=0.8$)",
-    (0.2, 1.0, 0.0, True): r"adaptive$\rightarrow$static",
+    (0.2, 0.0, False): r"static ($\omega_0=0.2$)",
 }
-
 
 # %%
 
@@ -141,14 +129,16 @@ names = {
 # ----------------------------------------------
 res = []
 mean_absedges = []
-init_w, eps, mu, fixedBNat100 = (0.2, 0.0, 0.0, False)
+init_w, eps, fixedBNat100 = (0.2, 0.0, False)
 res = pd.DataFrame()
-all_pressures = [0]
+all_pressures = [1, 2, 4, 8, 16]
 seeds = [0]
 for s in all_pressures:
     for seed in seeds:
         df = pd.read_csv(
-            f"simOut/sim_link_prob0.10_init_w{init_w:.2f}_beta3.00_rho0.33_eps{eps:.2f}_mu{mu:.3f}{'_fixedBNat100' if fixedBNat100 else ''}_ext_strength{s}_seed{seed}.csv"
+f"simOut/sim_init_w{init_w:.2f}_beta3.00_eps{eps:.2f}"
+f"{'_fixedBNat100' if fixedBNat100 else ''}"
+f"_ext_strength{s}_seed{seed}.csv"
         )
         W = df.loc[df.t == 100, edges_columns].values
         dists = pdist(W, metric="cityblock")
@@ -167,7 +157,7 @@ for s in all_pressures:
                 (df.loc[df.t == 95.5, col] == 1).reset_index()[col], "response"
             ] = col
 
-        for x in ["init_w", "eps", "mu", "s", "seed"]:
+        for x in ["init_w", "eps", "s", "seed"]:
             vals[x] = eval(x)
         res = pd.concat([res, vals])
 
@@ -183,7 +173,7 @@ res = res.drop(columns=["Hpers"])
 # -------    PRINT TABLE
 # ----------------------------------------------
 
-pressures = [0]
+pressures = [1, 2, 4, 8, 16]
 for s_ext in pressures:
     print(
         "".join(["#"] * 50)
@@ -196,16 +186,14 @@ for s_ext in pressures:
     metrics_table = [
         "x_focal",
         "extr_nonfoc",
-        "n_nbs",
         "absOm_tot",
         "absOm_foc",
         "tb_tot",
         "tb_foc",
         "clust",
-        "bc",
+        "bc_foc",
         "Hpersfoc",
         "Hpersnonfoc",
-        "Hsoc",
     ]
     for metric in metrics_table:
         print(f"{metric2titleVerb[metric]} &  " + f"{metric2title[metric]} &  ", end="")
@@ -292,7 +280,7 @@ res["noncompliant"] = np.nan
 res.loc[res.response.isin(["resistant", "resilient"]), "noncompliant"] = 1
 res.loc[res.response.isin(["compliant"]), "noncompliant"] = 0
 
-pressures = [0]
+pressures = [1, 2, 4, 8, 16]
 cds_df = []
 for s in pressures:
     res_s = res.query(f"s=={s} and eps=={eps}")
@@ -319,7 +307,7 @@ from sklearn.preprocessing import StandardScaler
 import statsmodels.api as sm
 
 dependent_vars = [
-    "n_nbs",
+  
     # "tb_tot",
     "tb_foc",
     # "absOm_tot",
@@ -544,9 +532,7 @@ if showRegression:
 fig.subplots_adjust(
     left=0.2, top=0.82 if showRegression else 0.92, right=0.98, bottom=0.12
 )
-fname = (
-    f"2026-04_figs/fig4_mu{mu}{names[(init_w,eps,mu,fixedBNat100)] if eps!=1 else ''}"
-)
+fname = f"2026-04_figs/fig4_{names[(init_w, eps, fixedBNat100)]}"
 
 if not os.path.isdir(fname.split("/")[0]):
     os.mkdir(fname.split("/")[0])
