@@ -452,12 +452,8 @@ def run_one(seed, init_w, beta, eps, fixedBNat100, ext_strength):
                     f"{k}{v}"  # integer params
                     if k in ["seed", "ext_strength"]
                     else (
-                        f"{k}{v:.3f}"
-                        if k == "mu"
-                        else (
-                            (k if v else "") if k == "fixedBNat100" else f"{k}{v:.2f}"
-                        )
-                    )
+    (k if v else "") if k == "fixedBNat100" else f"{k}{v:.2f}"
+)
                 )
                 for k, v in params.items()
             ]
@@ -498,28 +494,18 @@ def run_one(seed, init_w, beta, eps, fixedBNat100, ext_strength):
 # %%
 # Main execution
 if __name__ == "__main__":
-    # init_w = 0.2
     beta = 3.0
-    # ext_strength = 0
     fixedBNat100 = False
 
-   
     param_combis = []
 
-for eps in [0, 1]:
-    param_combis.append([0.1, beta, eps, False, 0])
-    param_combis.append([0.4, beta, eps, False, 0])
+    for init_w in [0.1, 0.2, 0.4, 0.6]:
+        for eps in [0, 1]:
+            param_combis.append([init_w, beta, eps, False, 0])
 
-    seeds = [0,1,2,3,4]
-
-    param_combis_withSeed = [
-    param_combi + [seed]
-    for param_combi in param_combis
-    for seed in seeds
-]
-
-    seeds = [0, 1, 2, 3, 4]  ## TODO increase
+    seeds = [0, 1, 2, 3, 4]
     detail = True
+
     track_times = (
         np.arange(T + 1)
         if detail
@@ -549,29 +535,34 @@ for eps in [0, 1]:
         )
         # read one simulation output
 
-        metric = "Hpers"      # Change to: clust, absOm_tot, absOm_foc, bc_foc, expI
+metric = "Hpers"
 
 plt.figure(figsize=(8,5))
 
-for eps_value in ["eps0.00", "eps1.00"]:
+for init_w in [0.1, 0.2, 0.4, 0.6]:
+    for eps in [0, 1]:
 
-    files = [
-        f for f in glob.glob(f"simOut/detailed/*{eps_value}*ext_strength0*.csv")
-        if "summary" not in f
-    ]
+        files = [
+            f for f in glob.glob(
+                f"simOut/detailed/*init_w{init_w:.2f}*eps{eps:.2f}*ext_strength0*.csv"
+            )
+            if "summary" not in f
+        ]
 
-    all_runs = []
+        all_runs = []
 
-    for file in files:
-        df = pd.read_csv(file)
-        all_runs.append(df.groupby("t")[metric].mean())
+        for file in files:
+            df = pd.read_csv(file)
+            all_runs.append(df.groupby("t")[metric].mean())
 
-    mean_metric = pd.concat(all_runs, axis=1).mean(axis=1)
+        mean_metric = pd.concat(all_runs, axis=1).mean(axis=1)
 
-    plt.plot(mean_metric.index,
-             mean_metric.values,
-             linewidth=2,
-             label=f"ε = {eps_value[-4:]}")
+        plt.plot(
+            mean_metric.index,
+            mean_metric.values,
+            linewidth=2,
+            label=f"ω₀ = {init_w}, ε = {eps}"
+        )
 
 plt.xlabel("Time")
 plt.ylabel(metric)
@@ -579,94 +570,3 @@ plt.title(f"{metric} over time (No external pressure)")
 plt.legend()
 plt.grid(alpha=0.3)
 plt.show()
-
-# plt.figure(figsize=(8,5))
-
-# for eps_value in ["eps0.00", "eps1.00"]:
-
-#     files = [
-#         f for f in glob.glob(f"simOut/detailed/*{eps_value}*ext_strength0*.csv")
-#         if "summary" not in f
-#     ]
-
-#     print("\nFiles used for", eps_value)
-#     for f in files:
-#         print(f)
-
-#     all_runs = []
-
-#     for file in files:
-#         df = pd.read_csv(file)
-
-#         mean = df.groupby("t")["x_focal"].mean()
-#         all_runs.append(mean)
-
-#     mean_across_runs = pd.concat(all_runs, axis=1).mean(axis=1)
-
-#     plt.plot(
-#         mean_across_runs.index,
-#         mean_across_runs.values,
-#         label=eps_value
-#     )
-
-# plt.xlabel("Time")
-# plt.ylabel("Average focal belief")
-# plt.title("Internal adaptation of focal belief (no external pressure)")
-# plt.axhline(0, linestyle="--")
-# plt.legend()
-# plt.show()
-# # for agent in df["id"].unique():
-# #     agent_data = df[df["id"] == agent]
-
-# #     plt.plot(
-# #         agent_data["t"],
-# #         agent_data["x_focal"],
-# #         alpha=0.5
-# #     )
-
-# # plt.xlabel("Time")
-# # plt.ylabel("Focal belief")
-# # plt.title("Individual focal belief trajectories")
-# # plt.axhline(0, linestyle="--")
-# # plt.show()
-
-# file = "simOut/detailed/sim_init_w0.10_beta3.00_eps0.00_ext_strength0_seed0_detailed.csv"
-
-# df = pd.read_csv(file)
-
-# plt.figure(figsize=(8,5))
-
-# for agent in df["id"].unique():
-#     agent_data = df[df["id"] == agent]
-
-#     plt.plot(
-#         agent_data["t"],
-#         agent_data["x_focal"],
-#         alpha=0.5
-#     )
-
-# plt.xlabel("Time")
-# plt.ylabel("Focal belief")
-# plt.title("Individual focal belief trajectories (eps=0)")
-# plt.axhline(0, linestyle="--")
-# plt.show()
-
-# file = "simOut/detailed/sim_init_w0.10_beta3.00_eps1.00_ext_strength0_seed0_detailed.csv"
-# df = pd.read_csv(file)
-
-# plt.figure(figsize=(8,5))
-
-# for agent in df["id"].unique():
-#     agent_data = df[df["id"] == agent]
-
-#     plt.plot(
-#         agent_data["t"],
-#         agent_data["x_focal"],
-#         alpha=0.5
-#     )
-
-# plt.xlabel("Time")
-# plt.ylabel("Focal belief")
-# plt.title("Individual focal belief trajectories (eps=0)")
-# plt.axhline(0, linestyle="--")
-# plt.show()
