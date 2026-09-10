@@ -19,7 +19,7 @@ import glob
 # FIXED PARAMETERS
 M = 10
 focal = 0
-n_agents = 10
+n_agents = 100
 tau = 1
 ext_belief = focal
 fixedBNat100 = False
@@ -489,15 +489,17 @@ if __name__ == "__main__":
 
     eps = 0
     param_combis = [
-    [0.2, beta, eps, fixedBNat100]
+    [0.2, beta, eps, fixedBNat100]]
+
+    pressures = [0, 1, 2, 4, 8, 16]
+
+    param_combis = [
+    p + [pressure]
+    for p in param_combis
+    for pressure in pressures
 ]
 
-    pressures = [0, 2, 4, 6]
-    param_combis = [
-        p + [ext_strength] for p in param_combis for ext_strength in pressures
-    ]
-
-    seeds = [5]
+    seeds = list(range(0, 5))    
     detail = True
     track_times = (
          np.arange(T + 1)
@@ -531,12 +533,12 @@ import matplotlib.pyplot as plt
 
 plt.figure(figsize=(8,5))
 
-for pressure in [0, 2, 4, 6]:
+for pressure in [0, 1, 2, 4, 8, 16]:
 
     file = (
         f"simOut/detailed/"
         f"sim_init_w0.20_beta3.00_eps0.00_"
-        f"ext_strength{pressure}_seed5_detailed.csv"
+        f"ext_strength{pressure}_seed0_detailed.csv"
     )
 
     df = pd.read_csv(file)
@@ -551,3 +553,29 @@ plt.title("Average focal belief under external pressure")
 plt.axvspan(101, 150, color="lightgray", alpha=0.3, label="Pressure period")
 plt.legend()
 plt.show()
+
+
+# import matplotlib.pyplot as plt
+
+# plt.figure(figsize=(8,5))
+
+# for pressure in [0, 1, 2, 4, 8, 16]:
+
+#     file = (
+#         f"simOut/detailed/"
+#         f"sim_init_w0.20_beta3.00_eps0.00_"
+#         f"ext_strength{pressure}_seed5_detailed.csv"
+#     )
+
+#     df = pd.read_csv(file)
+
+#     mean = df.groupby("t")["x_focal"].mean()
+
+#     plt.plot(mean.index, mean.values, label=f"Pressure = {pressure}")
+
+# plt.xlabel("Time")
+# plt.ylabel("Average focal belief")
+# plt.title("Average focal belief under external pressure")
+# plt.axvspan(101, 150, color="lightgray", alpha=0.3, label="Pressure period")
+# plt.legend()
+# plt.show()
