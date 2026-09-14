@@ -25,7 +25,10 @@ plt.rcParams.update({"legend.fontsize": smallfs})
 plt.rcParams.update({"xtick.labelsize": smallfs})
 plt.rcParams.update({"ytick.labelsize": smallfs})
 
-
+T = 200
+beforeRange = range(91, 101)
+duringRange = range(141, 151)
+afterRange = range(191, 201)
 # %%
 belief_dimensions = [int(a) for a in range(10)]
 belief_columns = [str(int(a)) for a in belief_dimensions]
@@ -64,7 +67,10 @@ for init_w, eps, fixedBNat100 in param_combis:
             W = df.loc[df.t == 100, edges_columns].values
             dists = pdist(W, metric="cityblock")
             groupishness = 0 if eps == 0 else dists.std() / dists.mean()
-            std_focal = df.loc[df.t == 100, "0"].std()
+            # std_focal = df.loc[df.t == 100, "0"].std()
+            before_focal = df.loc[df.t.isin(beforeRange), "0"].mean()
+            during_focal = df.loc[df.t.isin(duringRange), "0"].mean()
+            after_focal = df.loc[df.t.isin(afterRange), "0"].mean()
             nr_negs = sum(
                 df.loc[df.t.isin(range(91, 101)), ["0", "id", "t"]]
                 .pivot_table(index="id", values="0", columns="t")
@@ -79,7 +85,10 @@ for init_w, eps, fixedBNat100 in param_combis:
         fixedBNat100,
         namesTex[(init_w, eps, fixedBNat100)],
         groupishness,
-        std_focal,
+        # std_focal,
+        before_focal,
+        during_focal,
+        after_focal,
         nr_negs,
     ]
 )
@@ -105,8 +114,11 @@ res = pd.DataFrame(
         "fixedBNat100",
         "name",
         "groupishness",
-        "std_focal",
+        "before_focal",
+        "during_focal",
+        "after_focal",
         "nr_negs",
+        # "std_focal",
     ],
 )
 # %%
@@ -132,16 +144,19 @@ sns.barplot(
     palette="plasma",
 )
 # %%
-res.groupby("name").std_focal.mean(),
-res.groupby("name").std_focal.std()
-# %%
+# res.groupby("name").std_focal.mean(),
+# res.groupby("name").std_focal.std()
+# # %%
 pd.DataFrame(
     mean_absedges,
     columns=["init_w", "eps", "s_ext", "fixedBNat100", "name", "absOm_tot", "Om_tot"],
 ).groupby("name").absOm_tot.mean()
 
-print(res.groupby("name").std_focal.mean())
-print(res.groupby("name").std_focal.std())
+# print(res.groupby("name").std_focal.mean())
+# print(res.groupby("name").std_focal.std())
+print(
+    res.groupby("name")[["before_focal", "during_focal", "after_focal"]].mean().to_string()
+)
 
 print(
     pd.DataFrame(
