@@ -214,7 +214,7 @@ for ax, eps, init_w, fixedBNat100 in zip(
         y="normalized_count",
         palette=cmap,
         hue_order=["compliant", "resilient", "resistant"],
-        legend=True,
+        legend=False,
         fliersize=0,
         fill=True,
         linewidth=0.0,

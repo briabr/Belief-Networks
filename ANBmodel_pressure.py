@@ -476,7 +476,12 @@ if __name__ == "__main__":
 
     eps = 0
     param_combis = [
-    [0.2, beta, eps, fixedBNat100]]
+    [0.2, beta, 0.0, fixedBNat100],
+    [0.2, beta, 1.0, fixedBNat100],
+]
+    ## for analyses file so it could be congruent with peter analyses
+    # param_combis = [
+    # [0.2, beta, eps, fixedBNat100]]
 
     pressures = [0, 1, 2, 4, 8, 16]
 
@@ -487,7 +492,7 @@ if __name__ == "__main__":
 ]
 
     seeds = list(range(0, 5))    
-    detail = False
+    detail = True
     track_times = (
          np.arange(T + 1)
         if detail
@@ -554,30 +559,4 @@ for pressure in pressures:
             f"change_during={during-before:.3f} | "
             f"change_after={after-before:.3f}"
         )       
-
-# import matplotlib.pyplot as plt
-
-# plt.figure(figsize=(8,5))
-
-# for pressure in [0, 1, 2, 4, 8, 16]:
-
-#     file = (
-#         f"simOut/detailed/"
-#         f"sim_init_w0.20_beta3.00_eps0.00_"
-#         f"ext_strength{pressure}_seed0_detailed.csv"
-#     )
-
-#     df = pd.read_csv(file)
-
-#     mean = df.groupby("t")["x_focal"].mean()
-
-#     plt.plot(mean.index, mean.values, label=f"Pressure = {pressure}")
-
-# plt.xlabel("Time")
-# plt.ylabel("Average focal belief")
-# plt.title("Average focal belief under external pressure")
-# plt.axvspan(101, 150, color="lightgray", alpha=0.3, label="Pressure period")
-# plt.legend()
-# plt.show()
-
 
