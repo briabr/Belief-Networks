@@ -4,8 +4,6 @@ import numpy as np
 import pandas as pd
 from itertools import combinations
 import matplotlib.pyplot as plt
-import pandas as pd
-import numpy as np
 import seaborn as sns
 import netCDF4
 import json
@@ -13,9 +11,7 @@ import xarray as xr
 import matplotlib as mpl
 import matplotlib.patches as mpatches
 from scipy.spatial.distance import pdist
-
 import matplotlib.path as mpath
-import numpy as np
 import glob
 import os
 
@@ -31,103 +27,35 @@ plt.rcParams.update({"ytick.labelsize": smallfs})
 
 
 # %%
-response_cols = [
-    "persistPos",
-    "nonpersistPos",
-    "compliant",
-    "resilient",
-    "resistant",
-    "latecompliant",
-]
 belief_dimensions = [int(a) for a in range(10)]
 belief_columns = [str(int(a)) for a in belief_dimensions]
 edgelist = list(combinations(belief_dimensions, 2))
 edges_columns = [f"w{a}{b}" for a, b in edgelist]
-cmap = dict(
-    zip(
-        response_cols + ["NA"],
-        ["#4CAF50", "#AED581", "#2196F3", "#9C27B0", "#F44336", "#90CAF9", "#9E9E9E"],
-    )
-)
+
 names = {
-    (0.1, 0.0, False): "staticlow",
-    (0.4, 0.0, False): "statichigh",
+    (0.2, 0.0, False): "staticlow",
+    (0.8, 0.0, False): "statichigh",
+    (0.2, 1.0, False): "adaptivelow",
+    (0.8, 1.0, False): "adaptivehigh",
 }
 
 namesTex = {
-    (0.1, 0.0, False): r"static ($\omega_0=0.1$)",
-    (0.4, 0.0, False): r"static ($\omega_0=0.4$)",
-}
-# %%
-
-# %%
-import numpy as np
-import pandas as pd
-from itertools import combinations
-import matplotlib.pyplot as plt
-import pandas as pd
-import numpy as np
-import seaborn as sns
-import netCDF4
-import json
-import xarray as xr
-import matplotlib as mpl
-import matplotlib.patches as mpatches
-from scipy.spatial.distance import pdist
-
-import matplotlib.path as mpath
-import numpy as np
-import glob
-import os
-
-plt.rcParams.update({"font.size": 10})
-bigfs = 9
-smallfs = 7
-plt.rcParams.update({"font.size": bigfs})
-plt.rcParams.update({"axes.titlesize": bigfs})
-plt.rcParams.update({"axes.labelsize": bigfs})
-plt.rcParams.update({"legend.fontsize": smallfs})
-plt.rcParams.update({"xtick.labelsize": smallfs})
-plt.rcParams.update({"ytick.labelsize": smallfs})
-
-
-# %%
-response_cols = [
-    "persistPos",
-    "nonpersistPos",
-    "compliant",
-    "resilient",
-    "resistant",
-    "latecompliant",
-]
-belief_dimensions = [int(a) for a in range(10)]
-belief_columns = [str(int(a)) for a in belief_dimensions]
-edgelist = list(combinations(belief_dimensions, 2))
-edges_columns = [f"w{a}{b}" for a, b in edgelist]
-cmap = dict(
-    zip(
-        response_cols + ["NA"],
-        ["#4CAF50", "#AED581", "#2196F3", "#9C27B0", "#F44336", "#90CAF9", "#9E9E9E"],
-    )
-)
-names = {
-    (0.1, 0.0, False): "staticlow",
-    (0.4, 0.0, False): "statichigh",
-}
-
-namesTex = {
-    (0.1, 0.0, False): r"static ($\omega_0=0.1$)",
-    (0.4, 0.0, False): r"static ($\omega_0=0.4$)",
+    (0.2, 0.0, False): r"static ($\omega_0=0.2$)",
+    (0.8, 0.0, False): r"static ($\omega_0=0.8$)",
+    (0.2, 1.0, False): r"adaptive ($\omega_0=0.2$)",
+    (0.8, 1.0, False): r"adaptive ($\omega_0=0.8$)",
 }
 # %%
 s_exts = [0]
-seeds = [0]
+seeds = [0, 1, 2, 3, 4,]
 res = []
 beta = 3.00
 mean_absedges = []
 param_combis = [
-    (0.1, 0.0, False),
-    (0.4, 0.0, False),
+    (0.2, 0.0, False),   # low ω₀, no internal adaptation
+    (0.8, 0.0, False),   # high ω₀, no internal adaptation
+    (0.2, 1.0, False),   # low ω₀, internal adaptation
+    (0.8, 1.0, False),   # high ω₀, internal adaptation
 ]
 for init_w, eps, fixedBNat100 in param_combis:
     for s in s_exts:
@@ -146,18 +74,17 @@ for init_w, eps, fixedBNat100 in param_combis:
                 < 0
             )
             res.append(
-                [
-                    init_w,
-                    eps,
-                    s,
-                    fixedBNat100,
-                    namesTex[(init_w, eps, fixedBNat100)],
-                ]
-                + df.loc[df.t == 95.5][response_cols]
-                .sum(axis=0)[response_cols]
-                .to_list()
-                + [groupishness, std_focal, nr_negs]
-            )
+    [
+        init_w,
+        eps,
+        s,
+        fixedBNat100,
+        namesTex[(init_w, eps, fixedBNat100)],
+        groupishness,
+        std_focal,
+        nr_negs,
+    ]
+)
 
             mean_absedges.append(
                 [
@@ -173,9 +100,16 @@ for init_w, eps, fixedBNat100 in param_combis:
 
 res = pd.DataFrame(
     res,
-    columns=["init_w", "eps", "s_ext", "fixedBNat100", "name"]
-    + response_cols
-    + ["groupishness", "std_focal", "nr_negs"],
+    columns=[
+        "init_w",
+        "eps",
+        "s_ext",
+        "fixedBNat100",
+        "name",
+        "groupishness",
+        "std_focal",
+        "nr_negs",
+    ],
 )
 # %%
 sns.barplot(
@@ -200,44 +134,6 @@ sns.barplot(
     palette="plasma",
 )
 # %%
-
-eps = 0.0
-init_w = 0.1
-fixedBNat100 = False
-name = namesTex[(init_w, eps, fixedBNat100)]
-fig, axs = plt.subplots(1, 2, sharex=True)
-sns.stripplot(
-    res.query(f"name=='{name}'")[response_cols + ["s_ext"]].melt(
-        id_vars=["s_ext"], var_name="response", value_name="count"
-    ),
-    hue="response",
-    x="s_ext",
-    y="count",
-    dodge=True,
-    palette=cmap,
-    ax=axs[0],
-)
-
-relres = res[["compliant", "resilient", "resistant", "latecompliant"]].div(
-    res[["compliant", "resilient", "resistant", "latecompliant"]].sum(axis=1), axis=0
-)
-for c in ["eps","init_w", "s_ext", "fixedBNat100"]:
-    relres[c] = res[c]
-axs[1].set_title("only negative")
-sns.stripplot(
-    relres.query(f"eps=={eps} and init_w=={init_w}")
-    .drop(columns=["eps", "init_w", "fixedBNat100"])
-    .melt(id_vars=["s_ext"], var_name="response", value_name="count"),
-    hue="response",
-    x="s_ext",
-    y="count",
-    dodge=True,
-    palette=cmap,
-    ax=axs[1],
-)
-fig.suptitle(
-    f"eps={eps}, init_w={init_w}, {'fixedBNat100' if fixedBNat100 else ''}"
-)
 res.groupby("name").std_focal.mean(),
 res.groupby("name").std_focal.std()
 # %%

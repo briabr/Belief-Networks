@@ -129,7 +129,6 @@ def initialise_agents(init_w):
         )
     return np.array(agent_list)
 
-
 def glauber_fast(dim, agent, ext_strength, beta):
     old_belief = agent[beliefids][dim]
     adjacent_beliefs = agent[beliefids][belief_neighbours[dim]]
@@ -142,7 +141,6 @@ def glauber_fast(dim, agent, ext_strength, beta):
     p = 1.0 / (1.0 + np.exp(beta * dH))
     return p / p.sum()
 
-
 def update_edge_weights(agent, eps):
     """Update all edge weights for an agent"""
     edgeweights = agent[edgeids]
@@ -153,7 +151,6 @@ def update_edge_weights(agent, eps):
         + eps * del_beliefs[edge_arr[:, 0]] * del_beliefs[edge_arr[:, 1]]
         - lam * edgeweights
     )
-
 
 def update_belief(agent, ext_strength, beta):
     """Update all belief values for an agent."""
@@ -172,7 +169,6 @@ def update_belief(agent, ext_strength, beta):
     # replace new del beliefs for last time step
     agent[delbeliefids[:M]] = agent[beliefids] - agent_prior_beliefs
     return agent
-
 
 def get_energies(t, agents, params):
     # Hpers = - 0.5 sum_i=1^M sum_j=1^M  w_ij * x_i x_j
@@ -208,7 +204,6 @@ def get_energies(t, agents, params):
     )
 
     return Hpers, Hpersfoc, Hext
-
 
 def get_metrics(agents):
     triangles = list(combinations(belief_dimensions, 3))
@@ -266,7 +261,6 @@ def get_metrics(agents):
         expected_influence,
     )
 
-
 def fill_metrics(t, agents, params):
     Hpers, Hpersfoc, Hext = get_energies(t, agents, params)
     tb_tot, tb_foc, absOm_tot, absOm_foc, clust, bc_foc, expI = get_metrics(agents)
@@ -285,7 +279,6 @@ def fill_metrics(t, agents, params):
     np.abs(agents[:, [k for k in beliefids if not k == beliefids[focal]]]), axis=1
 )
     return agents
-
 
 def get_output(snapshots):
     beliefs = pd.DataFrame(
@@ -384,7 +377,6 @@ def get_output(snapshots):
         )
     return dfFull if detail else df
 
-
 def run_simulation(params):
     np.random.seed(params["seed"])
     eps, beta, ext_strength = (
@@ -424,7 +416,6 @@ def run_simulation(params):
     output_df = get_output(snapshots)
     return output_df
 
-
 def run_one(seed, init_w, beta, eps, fixedBNat100, ext_strength):
 
     results_folder = "simOut/"
@@ -442,33 +433,30 @@ def run_one(seed, init_w, beta, eps, fixedBNat100, ext_strength):
     }
 
     fname = (
-        results_folder
-        + ("detailed/" if detail else "")
-        + "sim_"
-        + "_".join(
-            [
-                (
-                    f"{k}{v}"  # integer params
-                    if k in ["seed", "ext_strength"]
-                    else (
-                        f"{k}{v:.3f}"
-                        if k == "mu"
-                        else (
-                            (k if v else "") if k == "fixedBNat100" else f"{k}{v:.2f}"
-                        )
-                    )
+    results_folder
+    + ("detailed/" if detail else "")
+    + "sim_"
+    + "_".join(
+        [
+            (
+                f"{k}{v}"  # integer params
+                if k in ["seed", "ext_strength"]
+                else (
+                    (k if v else "") if k == "fixedBNat100"
+                    else f"{k}{v:.2f}"
                 )
-                for k, v in params.items()
-            ]
-        )
+            )
+            for k, v in params.items()
+        ]
     )
+)
     fname = fname.replace("__", "_")
     fname += "" if not two_external_events else "_2events"
     fname += f"_lambda{lam:.4f}" if lam > 0 else ""
     if (seed % 25) == 0:
         print(fname + "...")
-
-    if True:  # not os.path.isfile(fname+".csv"):
+# Dont rerun the simulation if the output file already exists
+    if not os.path.isfile(fname + (("_detailed" if detail else "") + ".csv")):
         out = run_simulation(params)
 
         for k, v in params.items():
@@ -477,7 +465,6 @@ def run_one(seed, init_w, beta, eps, fixedBNat100, ext_strength):
         out.to_csv(fname + ("_detailed" if detail else "") + ".csv")
         print("Saved:", fname + "_detailed.csv")
     return fname
-
 
 # %%
 # Main execution
@@ -529,7 +516,6 @@ if __name__ == "__main__":
             for init_w, beta, eps, fixedBNat100, ext_strength, seed in param_combis_withSeed
         )
 # PRINT PRESSURE RESULTS
-
 pressures = [0, 1, 2, 4, 8, 16]
 seeds = range(5)
 

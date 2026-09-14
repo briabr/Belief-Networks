@@ -499,10 +499,10 @@ if __name__ == "__main__":
 
     param_combis = []
 
-    for init_w in [0.1, 0.2, 0.4, 0.6]:
-        for eps in [0, 1]:
-            param_combis.append([init_w, beta, eps, False, 0])
-
+for init_w in [0.2, 0.8]:
+    for eps in [0, 1]:
+        param_combis.append([init_w, beta, eps, False, 0])
+        
     seeds = [0, 1, 2, 3, 4]
     detail = True
 
@@ -539,7 +539,7 @@ metric = "Hpers"
 
 plt.figure(figsize=(8,5))
 
-for init_w in [0.1, 0.2, 0.4, 0.6]:
+for init_w in [0.2,0.8]:
     for eps in [0, 1]:
 
         files = [
