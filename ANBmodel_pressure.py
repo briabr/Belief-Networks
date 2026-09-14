@@ -487,7 +487,7 @@ if __name__ == "__main__":
 ]
 
     seeds = list(range(0, 5))    
-    detail = True
+    detail = False
     track_times = (
          np.arange(T + 1)
         if detail

@@ -56,8 +56,8 @@ namesTex = {
 }
 # %%
 
-s_exts = [1, 2, 4, 8, 16]
-seeds = [0]
+s_exts = [0, 1, 2, 4, 8, 16]
+seeds = [0, 1, 2, 3, 4]
 res = []
 mean_absedges = []
 param_combis = [
@@ -67,9 +67,9 @@ for init_w, eps, fixedBNat100 in param_combis:
     for s in s_exts:
         for seed in seeds:
             df = pd.read_csv(
-    f"simOut/sim_init_w{init_w:.2f}_beta{3.00:.2f}_eps{eps:.2f}"
+    f"simOut/detailed/sim_init_w{init_w:.2f}_beta{3.00:.2f}_eps{eps:.2f}"
     f"{'_fixedBNat100' if fixedBNat100 else ''}"
-    f"_ext_strength{s}_seed{seed}.csv"
+    f"_ext_strength{s}_seed{seed}_detailed.csv"
 )
             W = df.loc[df.t == 100, edges_columns].values
             dists = pdist(W, metric="cityblock")
@@ -203,6 +203,9 @@ for ax, eps, init_w, fixedBNat100 in zip(
     subset = subset[["compliant", "resilient", "resistant", "s_ext_log2"]].melt(
         id_vars="s_ext_log2", value_name="normalized_count", var_name="response"
     )
+    print(subset.shape)
+    print(subset["response"].value_counts())
+    print(subset.groupby("response")["normalized_count"].describe())
     ax = sns.boxplot(
         subset,
         ax=ax,
@@ -211,7 +214,7 @@ for ax, eps, init_w, fixedBNat100 in zip(
         y="normalized_count",
         palette=cmap,
         hue_order=["compliant", "resilient", "resistant"],
-        legend=False,
+        legend=True,
         fliersize=0,
         fill=True,
         linewidth=0.0,
