@@ -528,32 +528,46 @@ if __name__ == "__main__":
             )
             for init_w, beta, eps, fixedBNat100, ext_strength, seed in param_combis_withSeed
         )
+# PRINT PRESSURE RESULTS
 
-import matplotlib.pyplot as plt
+pressures = [0, 1, 2, 4, 8, 16]
+seeds = range(5)
 
-plt.figure(figsize=(8,5))
+print("\n" + "=" * 80)
+print("PRESSURE RESULTS")
+print("=" * 80)
 
-for pressure in [0, 1, 2, 4, 8, 16]:
+for pressure in pressures:
 
-    file = (
-        f"simOut/detailed/"
-        f"sim_init_w0.20_beta3.00_eps0.00_"
-        f"ext_strength{pressure}_seed0_detailed.csv"
-    )
+    print(f"\nPRESSURE = {pressure}")
+    print("-" * 80)
 
-    df = pd.read_csv(file)
+    for seed in seeds:
 
-    mean = df.groupby("t")["x_focal"].mean()
+        fname = (
+            f"simOut/detailed/"
+            f"sim_init_w0.20_beta3.00_eps0.00_"
+            f"ext_strength{pressure}_seed{seed}_detailed.csv"
+        )
 
-    plt.plot(mean.index, mean.values, label=f"Pressure = {pressure}")
+        if not os.path.isfile(fname):
+            print(f"Missing: {fname}")
+            continue
 
-plt.xlabel("Time")
-plt.ylabel("Average focal belief")
-plt.title("Average focal belief under external pressure")
-plt.axvspan(101, 150, color="lightgray", alpha=0.3, label="Pressure period")
-plt.legend()
-plt.show()
+        df = pd.read_csv(fname)
 
+        before = df[df["t"].isin(beforeRange)]["x_focal"].mean()
+        during = df[df["t"].isin(duringRange)]["x_focal"].mean()
+        after = df[df["t"].isin(afterRange)]["x_focal"].mean()
+
+        print(
+            f"seed={seed} | "
+            f"before={before:.3f} | "
+            f"during={during:.3f} | "
+            f"after={after:.3f} | "
+            f"change_during={during-before:.3f} | "
+            f"change_after={after-before:.3f}"
+        )       
 
 # import matplotlib.pyplot as plt
 
@@ -564,7 +578,7 @@ plt.show()
 #     file = (
 #         f"simOut/detailed/"
 #         f"sim_init_w0.20_beta3.00_eps0.00_"
-#         f"ext_strength{pressure}_seed5_detailed.csv"
+#         f"ext_strength{pressure}_seed0_detailed.csv"
 #     )
 
 #     df = pd.read_csv(file)
@@ -579,3 +593,5 @@ plt.show()
 # plt.axvspan(101, 150, color="lightgray", alpha=0.3, label="Pressure period")
 # plt.legend()
 # plt.show()
+
+
