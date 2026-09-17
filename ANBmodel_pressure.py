@@ -3,18 +3,13 @@
 Adaptive Belief Networks Model
 version 2026-04-15, Peter Steiglechner, steiglechner@csh.ac.at
 """
-
-import networkx as nx
 import numpy as np
 import pandas as pd
 import os
 from itertools import combinations
-from scipy.sparse import csr_matrix
-import time
 from joblib import Parallel, delayed
 import multiprocessing
 import igraph as ig
-import glob
 
 # FIXED PARAMETERS
 M = 10
@@ -23,17 +18,13 @@ n_agents = 100
 tau = 1
 ext_belief = focal
 fixedBNat100 = False
-two_external_events = False
 lam = 0.0
-ext_time = list(np.arange(101, 151)) + (
-    list(np.arange(201, 251)) if two_external_events else []
-)
-T = 200 if not two_external_events else 300
+ext_time = list(np.arange(101, 151)) 
+T = 200 
 beforeRange = list(range(91, 101))
 duringRange = list(range(141, 151))
 afterRange = list(range(191, 201))
-during2Range = list(range(241, 251))
-after2Range = list(range(291, 301))
+
 
 params_fixed = dict(
     M=M,
@@ -47,15 +38,8 @@ params_fixed = dict(
     duringRange=[duringRange[0], duringRange[-1]],
     afterRange=[afterRange[0], afterRange[-1]],
     fixedBNat100=fixedBNat100,
-    during2Range=(
-        [during2Range[0], during2Range[-1]] if two_external_events else [None, None]
-    ),
-    after2Range=(
-        [after2Range[0], after2Range[-1]] if two_external_events else [None, None]
-    ),
-    lam=lam,
+    
 )
-
 belief_dimensions = list(range(0, M))
 beliefupdate_order = belief_dimensions.copy()
 belief_neighbours = {
@@ -114,7 +98,7 @@ columns = meta_cols + metric_cols + response_cols + belief_cols + edge_cols
 
 
 def initialise_agents(init_w):
-    edgeweights = [init_w for _ in edge_list]
+    edgeweights = [init_w] * len(edge_list)
     agent_list = []
     for id in range(n_agents):
         opinion_vector = np.random.choice(
@@ -129,13 +113,14 @@ def initialise_agents(init_w):
         )
     return np.array(agent_list)
 
+# The core function that decides how a belief can change.
 def glauber_fast(dim, agent, ext_strength, beta):
     old_belief = agent[beliefids][dim]
     adjacent_beliefs = agent[beliefids][belief_neighbours[dim]]
     adjacent_edgeweights = agent[edgeids][adjacent_edge_ids[dim]]
     dH = -(belief_options - old_belief) * (
         np.sum(adjacent_edgeweights * adjacent_beliefs)
-        + ext_strength * 1
+        + ext_strength
         
     )
     p = 1.0 / (1.0 + np.exp(beta * dH))
@@ -237,8 +222,6 @@ def get_metrics(agents):
     node_clustering = A_cubed_diag / (degrees * (degrees - 1))
 
     avg_weighted_clustering = np.nanmean(node_clustering, axis=1)   # (n_agents,)
-    # focal_weighted_clustering = node_clustering[:, focal]            # (n_agents,)
-
     expected_influence = (A[:, focal, :] * agents[:, beliefids]).sum(axis=1)
 
     eps_val = 1e-6
@@ -256,7 +239,6 @@ def get_metrics(agents):
         bn_abs_meanedge_tot,
         bn_abs_meanedge_foc,
         avg_weighted_clustering,
-        # focal_weighted_clustering,
         bc_foc,
         expected_influence,
     )
@@ -340,24 +322,6 @@ def get_output(snapshots):
         beforedf["t"] = np.mean(beforeRange)
         duringdf["t"] = np.mean(duringRange)
         afterdf["t"] = np.mean(afterRange)
-        if two_external_events:
-            during2df = (
-                dfFull.loc[dfFull.t.isin(during2Range)]
-                .groupby("id")[metric_cols + belief_cols + edge_cols]
-                .mean()
-                .reset_index()
-            )
-            after2df = (
-                dfFull.loc[dfFull.t.isin(after2Range)]
-                .groupby("id")[metric_cols + belief_cols + edge_cols]
-                .mean()
-                .reset_index()
-            )
-            snapfinal2df = dfFull.loc[dfFull.t == 300][
-                meta_cols + metric_cols + belief_cols + edge_cols
-            ]
-            during2df["t"] = np.mean(during2Range)
-            after2df["t"] = np.mean(after2Range)
 
         # save response dummies of agents only at one time step.
         for dff in [beforedf]:
@@ -372,9 +336,8 @@ def get_output(snapshots):
                 (before < 0) * (during < 0) * (after > 0)
             )  # late-compliant
         df = pd.concat(
-            [snapzerodf, beforedf, snapbeforedf, duringdf, afterdf, snapfinaldf]
-            + ([during2df, after2df, snapfinal2df] if two_external_events else [])
-        )
+    [snapzerodf, beforedf, snapbeforedf, duringdf, afterdf, snapfinaldf]
+)
     return dfFull if detail else df
 
 def run_simulation(params):
@@ -451,7 +414,6 @@ def run_one(seed, init_w, beta, eps, fixedBNat100, ext_strength):
     )
 )
     fname = fname.replace("__", "_")
-    fname += "" if not two_external_events else "_2events"
     fname += f"_lambda{lam:.4f}" if lam > 0 else ""
     if (seed % 25) == 0:
         print(fname + "...")
@@ -469,9 +431,7 @@ def run_one(seed, init_w, beta, eps, fixedBNat100, ext_strength):
 # %%
 # Main execution
 if __name__ == "__main__":
-    # init_w = 0.2
     beta = 3.0
-    # ext_strength = 0
     fixedBNat100 = False
 
     eps = 0
@@ -479,10 +439,6 @@ if __name__ == "__main__":
     [0.2, beta, 0.0, fixedBNat100],
     [0.2, beta, 1.0, fixedBNat100],
 ]
-    ## for analyses file so it could be congruent with peter analyses
-    # param_combis = [
-    # [0.2, beta, eps, fixedBNat100]]
-
     pressures = [0, 1, 2, 4, 8, 16]
 
     param_combis = [
@@ -490,9 +446,8 @@ if __name__ == "__main__":
     for p in param_combis
     for pressure in pressures
 ]
-
     seeds = list(range(0, 5))    
-    detail = False
+    detail = True
     track_times = (
          np.arange(T + 1)
         if detail
@@ -502,7 +457,6 @@ if __name__ == "__main__":
         + duringRange
         + afterRange
         + [200]
-        + ((during2Range + after2Range + [300]) if two_external_events else [])
     )
 
     if detail and len(seeds) > 10:
@@ -523,40 +477,46 @@ if __name__ == "__main__":
 # PRINT PRESSURE RESULTS
 pressures = [0, 1, 2, 4, 8, 16]
 seeds = range(5)
+eps_values = [0.0, 1.0]
 
 print("\n" + "=" * 80)
 print("PRESSURE RESULTS")
 print("=" * 80)
 
-for pressure in pressures:
+for eps in eps_values:
 
-    print(f"\nPRESSURE = {pressure}")
-    print("-" * 80)
+    print(f"\nEPS = {eps}")
+    print("=" * 80)
 
-    for seed in seeds:
+    for pressure in pressures:
 
-        fname = (
-            f"simOut/detailed/"
-            f"sim_init_w0.20_beta3.00_eps0.00_"
-            f"ext_strength{pressure}_seed{seed}_detailed.csv"
-        )
+        print(f"\nPRESSURE = {pressure}")
+        print("-" * 80)
 
-        if not os.path.isfile(fname):
-            print(f"Missing: {fname}")
-            continue
+        for seed in seeds:
 
-        df = pd.read_csv(fname)
+            fname = (
+                f"simOut/detailed/"
+                f"sim_init_w0.20_beta3.00_eps{eps:.2f}_"
+                f"ext_strength{pressure}_seed{seed}_detailed.csv"
+            )
 
-        before = df[df["t"].isin(beforeRange)]["x_focal"].mean()
-        during = df[df["t"].isin(duringRange)]["x_focal"].mean()
-        after = df[df["t"].isin(afterRange)]["x_focal"].mean()
+            if not os.path.isfile(fname):
+                print(f"Missing: {fname}")
+                continue
 
-        print(
-            f"seed={seed} | "
-            f"before={before:.3f} | "
-            f"during={during:.3f} | "
-            f"after={after:.3f} | "
-            f"change_during={during-before:.3f} | "
-            f"change_after={after-before:.3f}"
-        )       
+            df = pd.read_csv(fname)
+
+            before = df[df["t"].isin(beforeRange)]["x_focal"].mean()
+            during = df[df["t"].isin(duringRange)]["x_focal"].mean()
+            after = df[df["t"].isin(afterRange)]["x_focal"].mean()
+
+            print(
+                f"seed={seed} | "
+                f"before={before:.3f} | "
+                f"during={during:.3f} | "
+                f"after={after:.3f} | "
+                f"change_during={during-before:.3f} | "
+                f"change_after={after-before:.3f}"
+            )       
 
