@@ -3,14 +3,10 @@
 Adaptive Belief Networks Model
 version 2026-04-15, Peter Steiglechner, steiglechner@csh.ac.at
 """
-
-import networkx as nx
 import numpy as np
 import pandas as pd
 import os
 from itertools import combinations
-from scipy.sparse import csr_matrix
-import time
 from joblib import Parallel, delayed
 import multiprocessing
 import igraph as ig
@@ -21,8 +17,8 @@ import glob
 M = 10
 focal = 0
 n_agents = 100
-tau = 1
-ext_belief = focal
+tau = 1 # controls how many previous time steps of belief changes are stored.
+ext_belief = focal # Do we actually need ext_belief if it is always just equal to focal?
 fixedBNat100 = False
 two_external_events = False
 lam = 0.0
