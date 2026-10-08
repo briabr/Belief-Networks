@@ -1,0 +1,522 @@
+# %%
+"""
+Adaptive Belief Networks Model
+version 2026-04-15, Peter Steiglechner, steiglechner@csh.ac.at
+"""
+import numpy as np
+import pandas as pd
+import os
+from itertools import combinations
+from joblib import Parallel, delayed
+import multiprocessing
+import igraph as ig
+
+# FIXED PARAMETERS
+M = 10
+focal = 0
+n_agents = 100
+tau = 1
+ext_belief = focal
+fixedBNat100 = False
+lam = 0.0
+ext_time = list(np.arange(101, 151)) 
+T = 200 
+beforeRange = list(range(91, 101))
+duringRange = list(range(141, 151))
+afterRange = list(range(191, 201))
+
+
+params_fixed = dict(
+    M=M,
+    focal=focal,
+    n_agents=n_agents,
+    tau=tau,
+    ext_belief=ext_belief,
+    ext_time=ext_time,
+    T=T,
+    beforeRange=[beforeRange[0], beforeRange[-1]],
+    duringRange=[duringRange[0], duringRange[-1]],
+    afterRange=[afterRange[0], afterRange[-1]],
+    fixedBNat100=fixedBNat100,
+    
+)
+belief_dimensions = list(range(0, M))
+beliefupdate_order = belief_dimensions.copy()
+belief_neighbours = {
+    i: [nj for nj, j in enumerate(belief_dimensions) if j != i]
+    for i in belief_dimensions
+}
+agentids = list(range(n_agents))
+edge_list = list(combinations(belief_dimensions, 2))
+edge_arr = np.array(edge_list)
+edge_lookup = {c: nc for nc, c in enumerate(edge_list)}
+adjacent_edge_ids = {
+    dim: [
+        edge_lookup[(dim, j)] if (dim, j) in edge_list else edge_lookup[(j, dim)]
+        for j in belief_dimensions
+        if j != dim
+    ]
+    for dim in belief_dimensions
+}
+belief_options = np.linspace(-1, 1, 21)
+n_options = len(belief_options)
+
+
+# PREPARE OUTPUT DATASET
+meta_cols = ["t", "id"]
+metric_cols = [
+    "Hpers",
+    "Hpersfoc",
+    "Hext",
+    "tb_tot",
+    "tb_foc",
+    "absOm_tot",
+    "absOm_foc",
+    "clust",
+    "bc_foc",
+    "expI",
+    "x_focal",
+    "extr_nonfoc",
+]
+response_cols = [
+    "persistPos",
+    "nonpersistPos",
+    "compliant",
+    "resilient",
+    "resistant",
+    "latecompliant",
+]
+columnIndex = len(meta_cols) + len(metric_cols) + len(response_cols)
+beliefids = list(range(columnIndex, columnIndex + M))
+edgeids = list(range(columnIndex + M, columnIndex + M + len(edge_list)))
+delbeliefids = range(
+    columnIndex + M + len(edge_list), columnIndex + M + len(edge_list) + tau * M
+)
+belief_cols = [str(b) for b in belief_dimensions]
+edge_cols = [f"w{e[0]}{e[1]}" for e in edge_list]
+columns = meta_cols + metric_cols + response_cols + belief_cols + edge_cols
+
+
+def initialise_agents(init_w):
+    edgeweights = [init_w] * len(edge_list)
+    agent_list = []
+    for id in range(n_agents):
+        opinion_vector = np.random.choice(
+            belief_options, size=M, p=np.ones(n_options) / n_options
+        )
+        agent_list.append(
+            [0, id]
+            + [np.nan] * (columnIndex - 2)
+            + list(opinion_vector)
+            + edgeweights
+            + list(np.zeros(M)) * tau  # this will be used to store past belief changes
+        )
+    return np.array(agent_list)
+
+# The core function that decides how a belief can change.
+def glauber_fast(dim, agent, ext_strength, beta):
+    old_belief = agent[beliefids][dim]
+    adjacent_beliefs = agent[beliefids][belief_neighbours[dim]]
+    adjacent_edgeweights = agent[edgeids][adjacent_edge_ids[dim]]
+    dH = -(belief_options - old_belief) * (
+        np.sum(adjacent_edgeweights * adjacent_beliefs)
+        + ext_strength
+        
+    )
+    p = 1.0 / (1.0 + np.exp(beta * dH))
+    return p / p.sum()
+
+def update_edge_weights(agent, eps):
+    """Update all edge weights for an agent"""
+    edgeweights = agent[edgeids]
+    del_beliefs = agent[delbeliefids].reshape((tau, M)).mean(axis=0)
+    lam = params_fixed["lam"]
+    return (
+        edgeweights
+        + eps * del_beliefs[edge_arr[:, 0]] * del_beliefs[edge_arr[:, 1]]
+        - lam * edgeweights
+    )
+
+def update_belief(agent, ext_strength, beta):
+    """Update all belief values for an agent."""
+    agent_prior_beliefs = np.copy(agent[beliefids])
+    np.random.shuffle(beliefupdate_order)
+    for dim in beliefupdate_order:
+        probabilities = glauber_fast(
+            dim,
+            agent,
+            0 if dim != focal else ext_strength,
+            beta,
+        )
+        agent[beliefids[dim]] = np.random.choice(belief_options, p=probabilities)
+    # shift del beliefs by one time step.
+    agent[delbeliefids[M:]] = agent[delbeliefids[:-M]]
+    # replace new del beliefs for last time step
+    agent[delbeliefids[:M]] = agent[beliefids] - agent_prior_beliefs
+    return agent
+
+def get_energies(t, agents, params):
+    # Hpers = - 0.5 sum_i=1^M sum_j=1^M  w_ij * x_i x_j
+    Hpers = [
+        -0.5
+        * np.sum(
+            [
+                agents[n][beliefids][dim]
+                * np.sum(
+                    agents[n][beliefids][belief_neighbours[dim]]
+                    * agents[n][edgeids][adjacent_edge_ids[dim]]
+                )  # this sums over belief_dims
+                for dim in belief_dimensions  # second sum over belief_dims --> factor 0.5
+            ]
+        )
+        for n in range(n_agents)
+    ]
+    Hpersfoc = [
+        -agents[n][beliefids][focal]
+        * np.sum(
+            agents[n][beliefids][belief_neighbours[focal]]
+            * agents[n][edgeids][adjacent_edge_ids[focal]]
+        )
+        for n in range(n_agents)
+    ]
+    Hext = (
+        [0] * n_agents
+        if t not in ext_time
+        else [
+            -params["ext_strength"] * 1 * agents[n][beliefids][focal]
+            for n in range(n_agents)
+        ]
+    )
+
+    return Hpers, Hpersfoc, Hext
+
+def get_metrics(agents):
+    triangles = list(combinations(belief_dimensions, 3))
+    tri_balance_tot = np.zeros(len(agents))
+    tri_balance_foc = np.zeros(len(agents))
+    for a, b, c in triangles:
+        tri_balance = (
+            agents[:, edgeids[edge_lookup[(a, b)]]]
+            * agents[:, edgeids[edge_lookup[(a, c)]]]
+            * agents[:, edgeids[edge_lookup[(b, c)]]]
+        ) > 0
+        tri_balance_tot += tri_balance
+        if focal in [a, b, c]:
+            tri_balance_foc += tri_balance
+
+    bn_abs_meanedge_tot = np.abs(agents[:, edgeids]).mean(axis=1)
+    bn_abs_meanedge_foc = np.abs(agents[:, edgeids][:, adjacent_edge_ids[focal]]).mean(
+        axis=1
+    )
+
+    A = np.zeros((n_agents, M, M))
+    for i, j in edge_list:
+        A[:, i, j] = agents[:, edgeids][:, edge_lookup[(i, j)]]
+        A[:, j, i] = A[:, i, j]
+    absA = np.abs(A)
+    w_max = absA.max(axis=(1,2), keepdims=True)  # (n_agents, 1, 1)
+    absA_norm = absA /  w_max
+    absA_norm_power = absA_norm ** (1/3)
+    A_cubed_diag = np.einsum("aij,ajk,aki->ai", absA_norm_power, absA_norm_power, absA_norm_power) 
+    degrees = (absA > 0).sum(axis=2)  # (n_agents, M)
+    node_clustering = A_cubed_diag / (degrees * (degrees - 1))
+
+    avg_weighted_clustering = np.nanmean(node_clustering, axis=1)   # (n_agents,)
+    expected_influence = (A[:, focal, :] * agents[:, beliefids]).sum(axis=1)
+
+    eps_val = 1e-6
+    def bc_focal_for_agent(a):
+        g = ig.Graph(n=M, edges=edge_list, directed=False)
+        weights = [1.0 / (absA[a, i, j] + eps_val) if absA[a, i, j] > 0 else 1e9
+                for i, j in edge_list]
+        return g.betweenness(vertices=focal, weights=weights, directed=False)
+
+    bc_foc = np.array([bc_focal_for_agent(a) for a in range(n_agents)])
+
+    return (
+        tri_balance_tot,
+        tri_balance_foc,
+        bn_abs_meanedge_tot,
+        bn_abs_meanedge_foc,
+        avg_weighted_clustering,
+        bc_foc,
+        expected_influence,
+    )
+
+def fill_metrics(t, agents, params):
+    Hpers, Hpersfoc, Hext = get_energies(t, agents, params)
+    tb_tot, tb_foc, absOm_tot, absOm_foc, clust, bc_foc, expI = get_metrics(agents)
+    agents[:, 2] = Hpers
+    agents[:, 3] = Hpersfoc
+    agents[:, 4] = Hext
+    agents[:, 5] = tb_tot
+    agents[:, 6] = tb_foc
+    agents[:, 7] = absOm_tot
+    agents[:, 8] = absOm_foc
+    agents[:, 9] = clust
+    agents[:, 10] = bc_foc
+    agents[:, 11] = expI
+    agents[:, 12] = agents[:, beliefids[focal]]
+    agents[:, 13] = np.mean(
+    np.abs(agents[:, [k for k in beliefids if not k == beliefids[focal]]]), axis=1
+)
+    return agents
+
+def get_output(snapshots):
+    beliefs = pd.DataFrame(
+        snapshots[:, [0, 1, beliefids[focal]]], columns=["t", "id", "x_foc"]
+    )
+    pivot = beliefs.pivot_table(index="t", columns="id", values="x_foc")
+    before = pivot.loc[pivot.index.isin(beforeRange)].mean(axis=0)
+    during = pivot.loc[pivot.index.isin(duringRange)].mean(axis=0)
+    after = pivot.loc[pivot.index.isin(afterRange)].mean(axis=0)
+    out = snapshots[:, : (columnIndex + M + len(edge_list))]
+    dfFull = pd.DataFrame(out, columns=columns)
+    if detail:
+        dfFull.loc[dfFull.index[-n_agents:], "persistPos"] = (
+            ((before >= 0) * (during >= 0) * (after >= 0)).astype(int).values
+        )  # persistent positive
+        dfFull.loc[dfFull.index[-n_agents:], "nonpersistPos"] = (
+            ((before >= 0) * (after < 0)).astype(int).values
+        )  # nonpersistent positive
+        dfFull.loc[dfFull.index[-n_agents:], "compliant"] = (
+            ((before < 0) * (during >= 0) * (after >= 0)).astype(int).values
+        )  # compliant
+        dfFull.loc[dfFull.index[-n_agents:], "resilient"] = (
+            ((before < 0) * (during >= 0) * (after < 0)).astype(int).values
+        )  # resilient
+        dfFull.loc[dfFull.index[-n_agents:], "resistant"] = (
+            ((before < 0) * (during < 0) * (after < 0)).astype(int).values
+        )  # resistant
+        dfFull.loc[dfFull.index[-n_agents:], "latecompliant"] = (
+            ((before < 0) * (during < 0) * (after > 0)).astype(int).values
+        )  # late-compliant
+    else:
+        snapzerodf = dfFull.loc[dfFull.t == 0][
+            meta_cols + metric_cols + belief_cols + edge_cols
+        ]
+        snapbeforedf = dfFull.loc[dfFull.t == 100][
+            meta_cols + metric_cols + belief_cols + edge_cols
+        ]
+        snapfinaldf = dfFull.loc[dfFull.t == 200][
+            meta_cols + metric_cols + belief_cols + edge_cols
+        ]
+        beforedf = (
+            dfFull.loc[dfFull.t.isin(beforeRange)]
+            .groupby("id")[metric_cols + belief_cols + edge_cols]
+            .mean()
+            .reset_index()
+        )
+        duringdf = (
+            dfFull.loc[dfFull.t.isin(duringRange)]
+            .groupby("id")[metric_cols + belief_cols + edge_cols]
+            .mean()
+            .reset_index()
+        )
+        afterdf = (
+            dfFull.loc[dfFull.t.isin(afterRange)]
+            .groupby("id")[metric_cols + belief_cols + edge_cols]
+            .mean()
+            .reset_index()
+        )
+        beforedf["t"] = np.mean(beforeRange)
+        duringdf["t"] = np.mean(duringRange)
+        afterdf["t"] = np.mean(afterRange)
+
+        # save response dummies of agents only at one time step.
+        for dff in [beforedf]:
+            dff["persistPos"] = (
+                (before >= 0) * (during >= 0) * (after >= 0)
+            )  # persistent positive
+            dff["nonpersistPos"] = (before >= 0) * (after < 0)  # nonpersistent positive
+            dff["compliant"] = (before < 0) * (during >= 0) * (after >= 0)  # compliant
+            dff["resilient"] = (before < 0) * (during >= 0) * (after < 0)  # resilient
+            dff["resistant"] = (before < 0) * (during < 0) * (after < 0)  # resistant
+            dff["latecompliant"] = (
+                (before < 0) * (during < 0) * (after > 0)
+            )  # late-compliant
+        df = pd.concat(
+    [snapzerodf, beforedf, snapbeforedf, duringdf, afterdf, snapfinaldf]
+)
+    return dfFull if detail else df
+
+def run_simulation(params):
+    np.random.seed(params["seed"])
+    eps, beta, ext_strength = (
+        params["eps"],
+        params["beta"],
+        params["ext_strength"],
+    )
+    agents = initialise_agents(params["init_w"])
+    # get metrics
+    agents = fill_metrics(0, agents, params)
+    snapshots = np.copy(agents)  # initialise snapshots with the agent list at t=0
+
+    # Main simulation loop
+    time_steps = np.arange(0, T + 1, 1)
+    for t in time_steps[1:]:
+        curr_ext_strength = ext_strength if t in ext_time else 0
+        np.random.shuffle(agentids)
+        for n in agentids:
+            agents[n] = update_belief(
+                agents[n], curr_ext_strength, beta
+            )
+            if fixedBNat100 and (t >= ext_time[0]):
+                pass
+            else:
+                eps_c = (
+                    eps if (not params["fixedBNat100"] or not t > ext_time[0]) else 0
+                )
+                agents[n, edgeids] = update_edge_weights(
+                    agents[n], eps_c
+                )
+        agents[:, 0] = t
+        if t in track_times or t == time_steps[-1]:
+            agents = fill_metrics(t, agents, params)
+            snapshots = np.concatenate([snapshots, agents])
+
+    # calculate responses and compress output dataframe
+    output_df = get_output(snapshots)
+    return output_df
+
+def run_one(seed, init_w, beta, eps, fixedBNat100, ext_strength):
+
+    results_folder = "simOut/"
+    if not os.path.isdir(results_folder):
+        os.mkdir(results_folder)
+    if detail and not os.path.isdir(results_folder + "detailed/"):
+        os.mkdir(results_folder + "detailed/")
+    params = {
+        "init_w": init_w,
+        "beta": beta,
+        "eps": eps,
+        "fixedBNat100": fixedBNat100,
+        "ext_strength": ext_strength,
+        "seed": seed,
+    }
+
+    fname = (
+    results_folder
+    + ("detailed/" if detail else "")
+    + "sim_"
+    + "_".join(
+        [
+            (
+                f"{k}{v}"  # integer params
+                if k in ["seed", "ext_strength"]
+                else (
+                    (k if v else "") if k == "fixedBNat100"
+                    else f"{k}{v:.2f}"
+                )
+            )
+            for k, v in params.items()
+        ]
+    )
+)
+    fname = fname.replace("__", "_")
+    fname += f"_lambda{lam:.4f}" if lam > 0 else ""
+    if (seed % 25) == 0:
+        print(fname + "...")
+# Dont rerun the simulation if the output file already exists
+    if not os.path.isfile(fname + (("_detailed" if detail else "") + ".csv")):
+        out = run_simulation(params)
+
+        for k, v in params.items():
+            out[k] = v
+
+        out.to_csv(fname + ("_detailed" if detail else "") + ".csv")
+        print("Saved:", fname + "_detailed.csv")
+    return fname
+
+# %%
+# Main execution
+if __name__ == "__main__":
+    beta = 3.0
+    fixedBNat100 = False
+
+    eps = 0
+    param_combis = [
+    [0.2, beta, 0.0, fixedBNat100],
+    [0.2, beta, 1.0, fixedBNat100],
+]
+    pressures = [0, 1, 2, 4, 8, 16]
+
+    param_combis = [
+    p + [pressure]
+    for p in param_combis
+    for pressure in pressures
+]
+    seeds = list(range(0, 5))    
+    detail = True
+    track_times = (
+         np.arange(T + 1)
+        if detail
+        else [0, 1]
+        + beforeRange
+        + [100]
+        + duringRange
+        + afterRange
+        + [200]
+    )
+
+    if detail and len(seeds) > 10:
+        print("...this will take very long")
+        quit()
+    else:
+        param_combis_withSeed = [
+            param_combi + [seed] for param_combi in param_combis for seed in seeds
+        ]
+        print("running on jobs: ", multiprocessing.cpu_count() - 1)
+
+        Parallel(n_jobs=max(1, multiprocessing.cpu_count() - 1))(
+            delayed(run_one)(
+                seed, init_w, beta, eps, fixedBNat100, ext_strength
+            )
+            for init_w, beta, eps, fixedBNat100, ext_strength, seed in param_combis_withSeed
+        )
+# PRINT PRESSURE RESULTS
+pressures = [0, 1, 2, 4, 8, 16]
+seeds = range(5)
+eps_values = [0.0, 1.0]
+
+print("\n" + "=" * 80)
+print("PRESSURE RESULTS")
+print("=" * 80)
+
+for eps in eps_values:
+
+    print(f"\nEPS = {eps}")
+    print("=" * 80)
+
+    for pressure in pressures:
+
+        print(f"\nPRESSURE = {pressure}")
+        print("-" * 80)
+
+        for seed in seeds:
+
+            fname = (
+                f"simOut/detailed/"
+                f"sim_init_w0.20_beta3.00_eps{eps:.2f}_"
+                f"ext_strength{pressure}_seed{seed}_detailed.csv"
+            )
+
+            if not os.path.isfile(fname):
+                print(f"Missing: {fname}")
+                continue
+
+            df = pd.read_csv(fname)
+
+            before = df[df["t"].isin(beforeRange)]["x_focal"].mean()
+            during = df[df["t"].isin(duringRange)]["x_focal"].mean()
+            after = df[df["t"].isin(afterRange)]["x_focal"].mean()
+
+            print(
+                f"seed={seed} | "
+                f"before={before:.3f} | "
+                f"during={during:.3f} | "
+                f"after={after:.3f} | "
+                f"change_during={during-before:.3f} | "
+                f"change_after={after-before:.3f}"
+            )       
+
