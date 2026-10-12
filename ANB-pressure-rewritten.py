@@ -9,16 +9,13 @@ import os
 from itertools import combinations
 from joblib import Parallel, delayed
 import multiprocessing
-import igraph as ig
 
 # FIXED PARAMETERS
 M = 10
 focal = 0
 n_agents = 100
 tau = 1
-ext_belief = focal
-fixedBNat100 = False
-lam = 0.0
+fixedBNat100 = False #optional
 ext_time = list(np.arange(101, 151)) 
 T = 200 
 beforeRange = list(range(91, 101))
@@ -31,7 +28,6 @@ params_fixed = dict(
     focal=focal,
     n_agents=n_agents,
     tau=tau,
-    ext_belief=ext_belief,
     ext_time=ext_time,
     T=T,
     beforeRange=[beforeRange[0], beforeRange[-1]],
@@ -65,15 +61,9 @@ n_options = len(belief_options)
 # PREPARE OUTPUT DATASET
 meta_cols = ["t", "id"]
 metric_cols = [
-    "Hpers",
-    "Hpersfoc",
-    "Hext",
-    "tb_tot",
-    "tb_foc",
+   
     "absOm_tot",
     "absOm_foc",
-    "clust",
-    "bc_foc",
     "expI",
     "x_focal",
     "extr_nonfoc",
@@ -134,7 +124,7 @@ def update_edge_weights(agent, eps):
     return (
         edgeweights
         + eps * del_beliefs[edge_arr[:, 0]] * del_beliefs[edge_arr[:, 1]]
-        - lam * edgeweights
+        * edgeweights
     )
 
 def update_belief(agent, ext_strength, beta):
@@ -155,94 +145,32 @@ def update_belief(agent, ext_strength, beta):
     agent[delbeliefids[:M]] = agent[beliefids] - agent_prior_beliefs
     return agent
 
-def get_energies(t, agents, params):
-    # Hpers = - 0.5 sum_i=1^M sum_j=1^M  w_ij * x_i x_j
-    Hpers = [
-        -0.5
-        * np.sum(
-            [
-                agents[n][beliefids][dim]
-                * np.sum(
-                    agents[n][beliefids][belief_neighbours[dim]]
-                    * agents[n][edgeids][adjacent_edge_ids[dim]]
-                )  # this sums over belief_dims
-                for dim in belief_dimensions  # second sum over belief_dims --> factor 0.5
-            ]
-        )
-        for n in range(n_agents)
-    ]
-    Hpersfoc = [
-        -agents[n][beliefids][focal]
-        * np.sum(
-            agents[n][beliefids][belief_neighbours[focal]]
-            * agents[n][edgeids][adjacent_edge_ids[focal]]
-        )
-        for n in range(n_agents)
-    ]
-    Hext = (
-        [0] * n_agents
-        if t not in ext_time
-        else [
-            -params["ext_strength"] * 1 * agents[n][beliefids][focal]
-            for n in range(n_agents)
-        ]
-    )
-
-    return Hpers, Hpersfoc, Hext
-
 def get_metrics(agents):
-    triangles = list(combinations(belief_dimensions, 3))
-    tri_balance_tot = np.zeros(len(agents))
-    tri_balance_foc = np.zeros(len(agents))
-    for a, b, c in triangles:
-        tri_balance = (
-            agents[:, edgeids[edge_lookup[(a, b)]]]
-            * agents[:, edgeids[edge_lookup[(a, c)]]]
-            * agents[:, edgeids[edge_lookup[(b, c)]]]
-        ) > 0
-        tri_balance_tot += tri_balance
-        if focal in [a, b, c]:
-            tri_balance_foc += tri_balance
-
+    # Mean absolute edge strength across all connections
     bn_abs_meanedge_tot = np.abs(agents[:, edgeids]).mean(axis=1)
-    bn_abs_meanedge_foc = np.abs(agents[:, edgeids][:, adjacent_edge_ids[focal]]).mean(
-        axis=1
-    )
 
+    # Mean absolute edge strength for connections to the focal belief
+    bn_abs_meanedge_foc = np.abs(
+        agents[:, edgeids][:, adjacent_edge_ids[focal]]
+    ).mean(axis=1)
+
+    # Expected influence on the focal belief from connected beliefs
     A = np.zeros((n_agents, M, M))
+
     for i, j in edge_list:
         A[:, i, j] = agents[:, edgeids][:, edge_lookup[(i, j)]]
         A[:, j, i] = A[:, i, j]
-    absA = np.abs(A)
-    w_max = absA.max(axis=(1,2), keepdims=True)  # (n_agents, 1, 1)
-    absA_norm = absA /  w_max
-    absA_norm_power = absA_norm ** (1/3)
-    A_cubed_diag = np.einsum("aij,ajk,aki->ai", absA_norm_power, absA_norm_power, absA_norm_power) 
-    degrees = (absA > 0).sum(axis=2)  # (n_agents, M)
-    node_clustering = A_cubed_diag / (degrees * (degrees - 1))
 
-    avg_weighted_clustering = np.nanmean(node_clustering, axis=1)   # (n_agents,)
-    expected_influence = (A[:, focal, :] * agents[:, beliefids]).sum(axis=1)
-
-    eps_val = 1e-6
-    def bc_focal_for_agent(a):
-        g = ig.Graph(n=M, edges=edge_list, directed=False)
-        weights = [1.0 / (absA[a, i, j] + eps_val) if absA[a, i, j] > 0 else 1e9
-                for i, j in edge_list]
-        return g.betweenness(vertices=focal, weights=weights, directed=False)
-
-    bc_foc = np.array([bc_focal_for_agent(a) for a in range(n_agents)])
+    expected_influence = (
+        A[:, focal, :] * agents[:, beliefids]
+    ).sum(axis=1)
 
     return (
-        tri_balance_tot,
-        tri_balance_foc,
         bn_abs_meanedge_tot,
         bn_abs_meanedge_foc,
-        avg_weighted_clustering,
-        bc_foc,
         expected_influence,
     )
-
+    
 def fill_metrics(t, agents, params):
     Hpers, Hpersfoc, Hext = get_energies(t, agents, params)
     tb_tot, tb_foc, absOm_tot, absOm_foc, clust, bc_foc, expI = get_metrics(agents)
