@@ -21,21 +21,19 @@ T = 200
 beforeRange = list(range(91, 101))
 duringRange = list(range(141, 151))
 afterRange = list(range(191, 201))
+detail = True
 
-
-params_fixed = dict(
-    M=M,
-    focal=focal,
-    n_agents=n_agents,
-    tau=tau,
-    ext_time=ext_time,
-    T=T,
-    beforeRange=[beforeRange[0], beforeRange[-1]],
-    duringRange=[duringRange[0], duringRange[-1]],
-    afterRange=[afterRange[0], afterRange[-1]],
-    fixedBNat100=fixedBNat100,
-    
+track_times = (
+    np.arange(T + 1)
+    if detail
+    else [0, 1]
+    + beforeRange
+    + [100]
+    + duringRange
+    + afterRange
+    + [200]
 )
+
 belief_dimensions = list(range(0, M))
 beliefupdate_order = belief_dimensions.copy()
 belief_neighbours = {
@@ -120,11 +118,9 @@ def update_edge_weights(agent, eps):
     """Update all edge weights for an agent"""
     edgeweights = agent[edgeids]
     del_beliefs = agent[delbeliefids].reshape((tau, M)).mean(axis=0)
-    lam = params_fixed["lam"]
     return (
         edgeweights
         + eps * del_beliefs[edge_arr[:, 0]] * del_beliefs[edge_arr[:, 1]]
-        * edgeweights
     )
 
 def update_belief(agent, ext_strength, beta):
@@ -172,22 +168,29 @@ def get_metrics(agents):
     )
     
 def fill_metrics(t, agents, params):
-    Hpers, Hpersfoc, Hext = get_energies(t, agents, params)
-    tb_tot, tb_foc, absOm_tot, absOm_foc, clust, bc_foc, expI = get_metrics(agents)
-    agents[:, 2] = Hpers
-    agents[:, 3] = Hpersfoc
-    agents[:, 4] = Hext
-    agents[:, 5] = tb_tot
-    agents[:, 6] = tb_foc
-    agents[:, 7] = absOm_tot
-    agents[:, 8] = absOm_foc
-    agents[:, 9] = clust
-    agents[:, 10] = bc_foc
-    agents[:, 11] = expI
-    agents[:, 12] = agents[:, beliefids[focal]]
-    agents[:, 13] = np.mean(
-    np.abs(agents[:, [k for k in beliefids if not k == beliefids[focal]]]), axis=1
-)
+    absOm_tot, absOm_foc, expI = get_metrics(agents)
+
+    # Mean absolute edge strength across the network
+    agents[:, 2] = absOm_tot
+
+    # Mean absolute edge strength connected to the focal belief
+    agents[:, 3] = absOm_foc
+
+    # Expected influence on the focal belief
+    agents[:, 4] = expI
+
+    # The focal belief itself
+    agents[:, 5] = agents[:, beliefids[focal]]
+
+    # Mean absolute value of all non-focal beliefs
+    nonfocal_ids = [
+        k for k in beliefids if k != beliefids[focal]
+    ]
+
+    agents[:, 6] = np.mean(
+        np.abs(agents[:, nonfocal_ids]), axis=1
+    )
+
     return agents
 
 def get_output(snapshots):
@@ -264,8 +267,15 @@ def get_output(snapshots):
                 (before < 0) * (during < 0) * (after > 0)
             )  # late-compliant
         df = pd.concat(
-    [snapzerodf, beforedf, snapbeforedf, duringdf, afterdf, snapfinaldf]
-)
+            [
+                snapzerodf,
+                beforedf, 
+                snapbeforedf, 
+                duringdf, 
+                afterdf, 
+                snapfinaldf
+            ]
+        )
     return dfFull if detail else df
 
 def run_simulation(params):
@@ -289,15 +299,11 @@ def run_simulation(params):
             agents[n] = update_belief(
                 agents[n], curr_ext_strength, beta
             )
-            if fixedBNat100 and (t >= ext_time[0]):
+            if params["fixedBNat100"] and t >= ext_time[0]:
                 pass
             else:
-                eps_c = (
-                    eps if (not params["fixedBNat100"] or not t > ext_time[0]) else 0
-                )
-                agents[n, edgeids] = update_edge_weights(
-                    agents[n], eps_c
-                )
+                agents[n, edgeids] = update_edge_weights(agents[n], eps
+                    )
         agents[:, 0] = t
         if t in track_times or t == time_steps[-1]:
             agents = fill_metrics(t, agents, params)
@@ -313,7 +319,7 @@ def run_one(seed, init_w, beta, eps, fixedBNat100, ext_strength):
     if not os.path.isdir(results_folder):
         os.mkdir(results_folder)
     if detail and not os.path.isdir(results_folder + "detailed/"):
-        os.mkdir(results_folder + "detailed/")
+        os.makedirs(results_folder + "detailed/", exist_ok=True)
     params = {
         "init_w": init_w,
         "beta": beta,
@@ -342,7 +348,6 @@ def run_one(seed, init_w, beta, eps, fixedBNat100, ext_strength):
     )
 )
     fname = fname.replace("__", "_")
-    fname += f"_lambda{lam:.4f}" if lam > 0 else ""
     if (seed % 25) == 0:
         print(fname + "...")
 # Dont rerun the simulation if the output file already exists
@@ -351,8 +356,7 @@ def run_one(seed, init_w, beta, eps, fixedBNat100, ext_strength):
 
         for k, v in params.items():
             out[k] = v
-
-        out.to_csv(fname + ("_detailed" if detail else "") + ".csv")
+        out.to_csv(fname + ("_detailed" if detail else "") + ".csv", index=False)
         print("Saved:", fname + "_detailed.csv")
     return fname
 
@@ -375,18 +379,6 @@ if __name__ == "__main__":
     for pressure in pressures
 ]
     seeds = list(range(0, 5))    
-    detail = True
-    track_times = (
-         np.arange(T + 1)
-        if detail
-        else [0, 1]
-        + beforeRange
-        + [100]
-        + duringRange
-        + afterRange
-        + [200]
-    )
-
     if detail and len(seeds) > 10:
         print("...this will take very long")
         quit()
@@ -402,49 +394,49 @@ if __name__ == "__main__":
             )
             for init_w, beta, eps, fixedBNat100, ext_strength, seed in param_combis_withSeed
         )
-# PRINT PRESSURE RESULTS
-pressures = [0, 1, 2, 4, 8, 16]
-seeds = range(5)
-eps_values = [0.0, 1.0]
+    # PRINT PRESSURE RESULTS
+    pressures = [0, 1, 2, 4, 8, 16]
+    seeds = range(5)
+    eps_values = [0.0, 1.0]
 
-print("\n" + "=" * 80)
-print("PRESSURE RESULTS")
-print("=" * 80)
-
-for eps in eps_values:
-
-    print(f"\nEPS = {eps}")
+    print("\n" + "=" * 80)
+    print("PRESSURE RESULTS")
     print("=" * 80)
 
-    for pressure in pressures:
+    for eps in eps_values:
 
-        print(f"\nPRESSURE = {pressure}")
-        print("-" * 80)
+        print(f"\nEPS = {eps}")
+        print("=" * 80)
 
-        for seed in seeds:
+        for pressure in pressures:
 
-            fname = (
-                f"simOut/detailed/"
-                f"sim_init_w0.20_beta3.00_eps{eps:.2f}_"
-                f"ext_strength{pressure}_seed{seed}_detailed.csv"
-            )
+            print(f"\nPRESSURE = {pressure}")
+            print("-" * 80)
 
-            if not os.path.isfile(fname):
-                print(f"Missing: {fname}")
-                continue
+            for seed in seeds:
 
-            df = pd.read_csv(fname)
+                fname = (
+                    f"simOut/detailed/"
+                    f"sim_init_w0.20_beta3.00_eps{eps:.2f}_"
+                    f"ext_strength{pressure}_seed{seed}_detailed.csv"
+                )
 
-            before = df[df["t"].isin(beforeRange)]["x_focal"].mean()
-            during = df[df["t"].isin(duringRange)]["x_focal"].mean()
-            after = df[df["t"].isin(afterRange)]["x_focal"].mean()
+                if not os.path.isfile(fname):
+                    print(f"Missing: {fname}")
+                    continue
 
-            print(
-                f"seed={seed} | "
-                f"before={before:.3f} | "
-                f"during={during:.3f} | "
-                f"after={after:.3f} | "
-                f"change_during={during-before:.3f} | "
-                f"change_after={after-before:.3f}"
-            )       
+                df = pd.read_csv(fname)
+
+                before = df[df["t"].isin(beforeRange)]["x_focal"].mean()
+                during = df[df["t"].isin(duringRange)]["x_focal"].mean()
+                after = df[df["t"].isin(afterRange)]["x_focal"].mean()
+
+                print(
+                    f"seed={seed} | "
+                    f"before={before:.3f} | "
+                    f"during={during:.3f} | "
+                    f"after={after:.3f} | "
+                    f"change_during={during-before:.3f} | "
+                    f"change_after={after-before:.3f}"
+                )       
 
