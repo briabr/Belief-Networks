@@ -15,25 +15,34 @@ M = 10
 focal = 0
 n_agents = 100
 tau = 1
+fixedBNat100 = False #optional
 T = 200 
+beforeRange = list(range(91, 101))
+duringRange = list(range(141, 151))
+afterRange = list(range(191, 201))
 detail = True
-track_times = np.arange(T + 1)
+
+track_times = (
+    np.arange(T + 1)
+    if detail
+    else [0, 1]
+    + beforeRange
+    + [100]
+    + duringRange
+    + afterRange
+    + [200]
+)
 
 belief_dimensions = list(range(0, M))
 beliefupdate_order = belief_dimensions.copy()
-
 belief_neighbours = {
     i: [nj for nj, j in enumerate(belief_dimensions) if j != i]
     for i in belief_dimensions
 }
-
 agentids = list(range(n_agents))
-
 edge_list = list(combinations(belief_dimensions, 2))
 edge_arr = np.array(edge_list)
-
 edge_lookup = {c: nc for nc, c in enumerate(edge_list)}
-
 adjacent_edge_ids = {
     dim: [
         edge_lookup[(dim, j)] if (dim, j) in edge_list else edge_lookup[(j, dim)]
@@ -42,7 +51,6 @@ adjacent_edge_ids = {
     ]
     for dim in belief_dimensions
 }
-
 belief_options = np.linspace(-1, 1, 21)
 n_options = len(belief_options)
 
@@ -57,8 +65,8 @@ metric_cols = [
     "x_focal",
     "extr_nonfoc",
 ]
-response_cols = []
-columnIndex = len(meta_cols) + len(metric_cols) + len(response_cols)
+
+columnIndex = len(meta_cols) + len(metric_cols) 
 beliefids = list(range(columnIndex, columnIndex + M))
 edgeids = list(range(columnIndex + M, columnIndex + M + len(edge_list)))
 delbeliefids = range(
@@ -66,7 +74,7 @@ delbeliefids = range(
 )
 belief_cols = [str(b) for b in belief_dimensions]
 edge_cols = [f"w{e[0]}{e[1]}" for e in edge_list]
-columns = meta_cols + metric_cols + response_cols + belief_cols + edge_cols
+columns = meta_cols + metric_cols + belief_cols + edge_cols
 
 
 def initialise_agents(init_w):
@@ -88,16 +96,13 @@ def initialise_agents(init_w):
 # The core function that decides how a belief can change.
 def glauber_fast(dim, agent, beta):
     old_belief = agent[beliefids][dim]
-
     adjacent_beliefs = agent[beliefids][belief_neighbours[dim]]
     adjacent_edgeweights = agent[edgeids][adjacent_edge_ids[dim]]
-
-    dH = -(belief_options - old_belief) * np.sum(
-        adjacent_edgeweights * adjacent_beliefs
+    dH = -(belief_options - old_belief) * (
+        np.sum(adjacent_edgeweights * adjacent_beliefs)
+        
     )
-
     p = 1.0 / (1.0 + np.exp(beta * dH))
-
     return p / p.sum()
 
 def update_edge_weights(agent, eps):
@@ -112,23 +117,20 @@ def update_edge_weights(agent, eps):
 def update_belief(agent, beta):
     """Update all belief values for an agent."""
     agent_prior_beliefs = np.copy(agent[beliefids])
-
     np.random.shuffle(beliefupdate_order)
-
     for dim in beliefupdate_order:
-        probabilities = glauber_fast(dim, agent, beta)
-
-        agent[beliefids[dim]] = np.random.choice(
-            belief_options, p=probabilities
+        probabilities = glauber_fast(
+            dim,
+            agent,
+            beta,
         )
-
-    # Shift belief changes by one time step.
+        agent[beliefids[dim]] = np.random.choice(belief_options, p=probabilities)
+    # shift del beliefs by one time step.
     agent[delbeliefids[M:]] = agent[delbeliefids[:-M]]
-
-    # Store the latest belief changes.
+    # replace new del beliefs for last time step
     agent[delbeliefids[:M]] = agent[beliefids] - agent_prior_beliefs
-
     return agent
+
 def get_metrics(agents):
     # Mean absolute edge strength across all connections
     bn_abs_meanedge_tot = np.abs(agents[:, edgeids]).mean(axis=1)
@@ -182,96 +184,175 @@ def fill_metrics(t, agents, params):
     return agents
 
 def get_output(snapshots):
-    df_full = pd.DataFrame(snapshots, columns=columns)
-    return df_full
+    beliefs = pd.DataFrame(
+        snapshots[:, [0, 1, beliefids[focal]]], columns=["t", "id", "x_foc"]
+    )
+    pivot = beliefs.pivot_table(index="t", columns="id", values="x_foc")
+    before = pivot.loc[pivot.index.isin(beforeRange)].mean(axis=0)
+    during = pivot.loc[pivot.index.isin(duringRange)].mean(axis=0)
+    after = pivot.loc[pivot.index.isin(afterRange)].mean(axis=0)
+    out = snapshots[:, : (columnIndex + M + len(edge_list))]
+    dfFull = pd.DataFrame(out, columns=columns)
+    snapzerodf = dfFull.loc[dfFull.t == 0][
+        meta_cols + metric_cols + belief_cols + edge_cols
+    ]
+    snapbeforedf = dfFull.loc[dfFull.t == 100][
+        meta_cols + metric_cols + belief_cols + edge_cols
+    ]
+    snapfinaldf = dfFull.loc[dfFull.t == 200][
+        meta_cols + metric_cols + belief_cols + edge_cols
+    ]
+    beforedf = (
+        dfFull.loc[dfFull.t.isin(beforeRange)]
+        .groupby("id")[metric_cols + belief_cols + edge_cols]
+        .mean()
+        .reset_index()
+    )
+    duringdf = (
+        dfFull.loc[dfFull.t.isin(duringRange)]
+        .groupby("id")[metric_cols + belief_cols + edge_cols]
+        .mean()
+        .reset_index()
+    )
+    afterdf = (
+        dfFull.loc[dfFull.t.isin(afterRange)]
+        .groupby("id")[metric_cols + belief_cols + edge_cols]
+        .mean()
+        .reset_index()
+    )
+    beforedf["t"] = np.mean(beforeRange)
+    duringdf["t"] = np.mean(duringRange)
+    afterdf["t"] = np.mean(afterRange)
+
+    
+    df = pd.concat(
+        [
+            snapzerodf,
+            beforedf, 
+            snapbeforedf, 
+            duringdf, 
+            afterdf, 
+            snapfinaldf
+        ]
+    )
+    return dfFull if detail else df
 
 def run_simulation(params):
     np.random.seed(params["seed"])
-
-    eps = params["eps"]
-    beta = params["beta"]
-
+    eps, beta = (
+        params["eps"],
+        params["beta"],
+    )
     agents = initialise_agents(params["init_w"])
+    # get metrics
     agents = fill_metrics(0, agents, params)
+    snapshots = np.copy(agents)  # initialise snapshots with the agent list at t=0
 
-    snapshots = np.copy(agents)
+    # Main simulation loop
     time_steps = np.arange(0, T + 1, 1)
-
     for t in time_steps[1:]:
         np.random.shuffle(agentids)
-
         for n in agentids:
-            agents[n] = update_belief(agents[n], beta)
-            agents[n, edgeids] = update_edge_weights(agents[n], eps)
-
+            agents[n] = update_belief(
+                agents[n], beta
+            )
+            agents[n, edgeids] = update_edge_weights(
+                agents[n], eps
+            )
         agents[:, 0] = t
-
         if t in track_times or t == time_steps[-1]:
             agents = fill_metrics(t, agents, params)
             snapshots = np.concatenate([snapshots, agents])
 
+    # calculate responses and compress output dataframe
     output_df = get_output(snapshots)
     return output_df
 
-def run_one(seed, init_w, beta, eps):
+def run_one(seed, init_w, beta, eps, fixedBNat100):
+
     results_folder = "simOut/"
-    detailed_folder = results_folder + "detailed/"
-
-    os.makedirs(detailed_folder, exist_ok=True)
-
+    if not os.path.isdir(results_folder):
+        os.mkdir(results_folder)
+    if detail and not os.path.isdir(results_folder + "detailed/"):
+        os.makedirs(results_folder + "detailed/", exist_ok=True)
     params = {
         "init_w": init_w,
         "beta": beta,
         "eps": eps,
+        "fixedBNat100": fixedBNat100,
         "seed": seed,
     }
 
     fname = (
-        detailed_folder
-        + f"sim_init_w{init_w:.2f}"
-        + f"_beta{beta:.2f}"
-        + f"_eps{eps:.2f}"
-        + f"_seed{seed}_detailed.csv"
+        results_folder
+        + ("detailed/" if detail else "")
+        + "sim_"
+        + "_".join(
+            [
+                (
+                    f"{k}{v}"
+                    if k == "seed"
+                    else (
+                        (k if v else "")
+                        if k == "fixedBNat100"
+                        else f"{k}{v:.2f}"
+                    )
+                )
+                for k, v in params.items()
+            ]
+        )
     )
+    fname = fname.replace("__", "_")
 
     if seed % 25 == 0:
         print(fname + "...")
 
-    # Do not rerun a simulation if its output already exists.
-    if not os.path.isfile(fname):
+    output_file = fname + ("_detailed" if detail else "") + ".csv"
+
+    # Do not rerun the simulation if the output file already exists
+    if not os.path.isfile(output_file):
         out = run_simulation(params)
 
         for k, v in params.items():
             out[k] = v
 
-        out.to_csv(fname, index=False)
-        print("Saved:", fname)
+        out.to_csv(output_file, index=False)
+        print("Saved:", output_file)
 
     return fname
-# %%
 # Main execution
 if __name__ == "__main__":
     beta = 3.0
-    init_w = 0.2
+    fixedBNat100 = False
 
-    eps_values = [0.0, 1.0]
-    seeds = list(range(5))
+    param_combis = [
+        [0.2, beta, 0.0, fixedBNat100],
+        [0.2, beta, 1.0, fixedBNat100],
+    ]
+
+    seeds = list(range(0, 5))
 
     if detail and len(seeds) > 10:
         print("...this will take very long")
         quit()
+    else:
+        param_combis_withSeed = [
+            param_combi + [seed]
+            for param_combi in param_combis
+            for seed in seeds
+        ]
 
-    param_combis_withSeed = [
-        (seed, init_w, beta, eps)
-        for eps in eps_values
-        for seed in seeds
-    ]
+        print(
+            "running on jobs: ",
+            max(1, multiprocessing.cpu_count() - 1)
+        )
 
-    print("Running on jobs:", max(1, multiprocessing.cpu_count() - 1))
-
-    Parallel(n_jobs=max(1, multiprocessing.cpu_count() - 1))(
-        delayed(run_one)(seed, init_w, beta, eps)
-        for seed, init_w, beta, eps in param_combis_withSeed
-    )
-
-    print("\nAll simulations completed.")
+        Parallel(
+            n_jobs=max(1, multiprocessing.cpu_count() - 1)
+        )(
+            delayed(run_one)(
+                seed, init_w, beta, eps, fixedBNat100
+            )
+            for init_w, beta, eps, fixedBNat100, seed
+            in param_combis_withSeed
+        )
