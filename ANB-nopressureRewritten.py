@@ -54,7 +54,6 @@ adjacent_edge_ids = {
 belief_options = np.linspace(-1, 1, 21)
 n_options = len(belief_options)
 
-
 # PREPARE OUTPUT DATASET
 meta_cols = ["t", "id"]
 metric_cols = [
@@ -75,7 +74,6 @@ delbeliefids = range(
 belief_cols = [str(b) for b in belief_dimensions]
 edge_cols = [f"w{e[0]}{e[1]}" for e in edge_list]
 columns = meta_cols + metric_cols + belief_cols + edge_cols
-
 
 def initialise_agents(init_w):
     edgeweights = [init_w] * len(edge_list)
