@@ -1,21 +1,12 @@
 # %%
-# from matplotlib.pylab import beta
 import numpy as np
 import pandas as pd
 from itertools import combinations
 import matplotlib.pyplot as plt
 import seaborn as sns
-import netCDF4
-import json
-import xarray as xr
-import matplotlib as mpl
-import matplotlib.patches as mpatches
 from scipy.spatial.distance import pdist
-import matplotlib.path as mpath
-import glob
-import os
 
-plt.rcParams.update({"font.size": 10})
+
 bigfs = 9
 smallfs = 7
 plt.rcParams.update({"font.size": bigfs})
@@ -25,22 +16,13 @@ plt.rcParams.update({"legend.fontsize": smallfs})
 plt.rcParams.update({"xtick.labelsize": smallfs})
 plt.rcParams.update({"ytick.labelsize": smallfs})
 
-T = 200
 beforeRange = range(91, 101)
 duringRange = range(141, 151)
 afterRange = range(191, 201)
 # %%
 belief_dimensions = [int(a) for a in range(10)]
-belief_columns = [str(int(a)) for a in belief_dimensions]
 edgelist = list(combinations(belief_dimensions, 2))
 edges_columns = [f"w{a}{b}" for a, b in edgelist]
-
-names = {
-    (0.2, 0.0, False): "staticlow",
-    (0.8, 0.0, False): "statichigh",
-    (0.2, 1.0, False): "adaptivelow",
-    (0.8, 1.0, False): "adaptivehigh",
-}
 
 namesTex = {
     (0.2, 0.0, False): r"static ($\omega_0=0.2$)",
@@ -64,8 +46,15 @@ for init_w, eps, fixedBNat100 in param_combis:
             df = pd.read_csv(
     f"simOut/detailed/sim_init_w{init_w:.2f}_beta{beta:.2f}_eps{eps:.2f}_ext_strength{s}_seed{seed}_detailed.csv"
 )
-            W = df.loc[df.t == 100, edges_columns].values
-            dists = pdist(W, metric="cityblock")
+            
+        W = df.loc[df.t == 100, edges_columns].values
+        dists = pdist(W, metric="cityblock")
+
+        if dists.mean() > 0:
+            groupishness = dists.std() / dists.mean()
+        else:
+            groupishness = 0
+
             groupishness = 0 if eps == 0 else dists.std() / dists.mean()
             # std_focal = df.loc[df.t == 100, "0"].std()
             before_focal = df.loc[df.t.isin(beforeRange), "0"].mean()
