@@ -4,8 +4,7 @@ import pandas as pd
 from itertools import combinations
 import matplotlib.pyplot as plt
 import seaborn as sns
-from scipy.spatial.distance import pdist
-
+import os
 
 bigfs = 9
 smallfs = 7
@@ -26,9 +25,7 @@ edges_columns = [f"w{a}{b}" for a, b in edgelist]
 
 namesTex = {
     (0.2, 0.0, False): r"static ($\omega_0=0.2$)",
-    (0.8, 0.0, False): r"static ($\omega_0=0.8$)",
     (0.2, 1.0, False): r"adaptive ($\omega_0=0.2$)",
-    (0.8, 1.0, False): r"adaptive ($\omega_0=0.8$)",
 }
 # %%
 s_exts = [0, 1, 2, 4, 8, 16]
@@ -43,44 +40,33 @@ param_combis = [
 for init_w, eps, fixedBNat100 in param_combis:
     for s in s_exts:
         for seed in seeds:
+
             df = pd.read_csv(
-    f"simOut/detailed/sim_init_w{init_w:.2f}_beta{beta:.2f}_eps{eps:.2f}_ext_strength{s}_seed{seed}_detailed.csv"
-)
-            
-        W = df.loc[df.t == 100, edges_columns].values
-        dists = pdist(W, metric="cityblock")
-
-        if dists.mean() > 0:
-            groupishness = dists.std() / dists.mean()
-        else:
-            groupishness = 0
-
-            groupishness = 0 if eps == 0 else dists.std() / dists.mean()
-            # std_focal = df.loc[df.t == 100, "0"].std()
+                f"simOut_n1/detailed/sim_init_w{init_w:.2f}_beta{beta:.2f}_eps{eps:.2f}_ext_strength{s}_seed{seed}_detailed.csv"
+            )
+            print("FILE:", f"simOut/detailed/sim_init_w{init_w:.2f}_beta{beta:.2f}_eps{eps:.2f}_ext_strength{s}_seed{seed}_detailed.csv"
+                        )
+            print("NUMBER OF AGENTS:", df.loc[df.t == 100, "id"].nunique())
+            print("EDGE SHAPE:", df.loc[df.t == 100, edges_columns].shape)
+            print(df.loc[df.t == 100, edges_columns].shape)
             before_focal = df.loc[df.t.isin(beforeRange), "0"].mean()
             during_focal = df.loc[df.t.isin(duringRange), "0"].mean()
             after_focal = df.loc[df.t.isin(afterRange), "0"].mean()
-            nr_negs = sum(
-                df.loc[df.t.isin(range(91, 101)), ["0", "id", "t"]]
-                .pivot_table(index="id", values="0", columns="t")
-                .mean(axis=1)
-                < 0
-            )
+
+            before_focal_negative = before_focal < 0
             res.append(
-    [
-        init_w,
-        eps,
-        s,
-        fixedBNat100,
-        namesTex[(init_w, eps, fixedBNat100)],
-        groupishness,
-        # std_focal,
-        before_focal,
-        during_focal,
-        after_focal,
-        nr_negs,
-    ]
-)
+                [
+                    init_w,
+                    eps,
+                    s,
+                    fixedBNat100,
+                    namesTex[(init_w, eps, fixedBNat100)],
+                    before_focal,
+                    during_focal,
+                    after_focal,
+                    before_focal_negative,
+                ]
+            )
 
             mean_absedges.append(
                 [
@@ -93,7 +79,6 @@ for init_w, eps, fixedBNat100 in param_combis:
                 + [np.abs(df.loc[df.t == 100, edges_columns].values).mean()]
                 + [df.loc[df.t == 100, edges_columns].values.mean()]
             )
-
 res = pd.DataFrame(
     res,
     columns=[
@@ -102,17 +87,16 @@ res = pd.DataFrame(
         "s_ext",
         "fixedBNat100",
         "name",
-        "groupishness",
         "before_focal",
         "during_focal",
         "after_focal",
-        "nr_negs",
+        "before_focal_negative",
         # "std_focal",
     ],
 )
 # %%
 sns.barplot(
-    pd.DataFrame(
+    data=pd.DataFrame(
         mean_absedges,
         columns=[
             "init_w",
@@ -124,11 +108,11 @@ sns.barplot(
             "mean_edge",
         ],
     )
-    .groupby(["name"])
+    .groupby(["name", "s_ext"])
     .mean()
     .reset_index(),
+    x="s_ext",
     hue="name",
-    x="name",
     y="mean_abs_edge",
     palette="plasma",
 )
@@ -136,23 +120,21 @@ sns.barplot(
 # res.groupby("name").std_focal.mean(),
 # res.groupby("name").std_focal.std()
 # # %%
-pd.DataFrame(
-    mean_absedges,
-    columns=["init_w", "eps", "s_ext", "fixedBNat100", "name", "absOm_tot", "Om_tot"],
-).groupby("name").absOm_tot.mean()
 
 # print(res.groupby("name").std_focal.mean())
 # print(res.groupby("name").std_focal.std())
 print(
-    res.groupby("name")[["before_focal", "during_focal", "after_focal"]].mean().to_string()
+    res.groupby(["name", "s_ext"])[
+    ["before_focal", "during_focal", "after_focal"]
+].mean()
 )
 
 print(
     pd.DataFrame(
         mean_absedges,
         columns=["init_w", "eps", "s_ext", "fixedBNat100", "name", "absOm_tot", "Om_tot"],
-    ).groupby("name").absOm_tot.mean()
+    ).groupby(["name", "s_ext"]).absOm_tot.mean()
 )
-
-plt.savefig("2026-04_figs/nopressure_analysis.png", dpi=600)
-print("saved 2026-04_figs/nopressure_analysis.png")
+os.makedirs("2026-11_figs", exist_ok=True)
+plt.savefig("2026-11_figs/individual_pressure_analysis.png", dpi=600)
+print("saved 2026-11_figs/individual_pressure_analysis.png")
