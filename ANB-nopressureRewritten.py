@@ -13,7 +13,7 @@ import multiprocessing
 # FIXED PARAMETERS
 M = 10
 focal = 0
-n_agents = 100
+n_agents = 1
 tau = 1
 fixedBNat100 = False #optional
 T = 200 
@@ -268,7 +268,7 @@ def run_simulation(params):
 
 def run_one(seed, init_w, beta, eps, fixedBNat100):
 
-    results_folder = "simOut/"
+    results_folder = "simOut_n1_nopressure/"
     if not os.path.isdir(results_folder):
         os.mkdir(results_folder)
     if detail and not os.path.isdir(results_folder + "detailed/"):

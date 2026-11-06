@@ -424,7 +424,7 @@ def run_simulation(params):
 
 def run_one(seed, init_w, beta, eps, fixedBNat100, ext_strength):
 
-    results_folder = "simOut/"
+    results_folder = "simOut_n1_nopressure/"
     if not os.path.isdir(results_folder):
         os.mkdir(results_folder)
     if detail and not os.path.isdir(results_folder + "detailed/"):
