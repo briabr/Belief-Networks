@@ -1,0 +1,655 @@
+# %%
+import numpy as np
+import pandas as pd
+from itertools import combinations
+import matplotlib.pyplot as plt
+import seaborn as sns
+import matplotlib as mpl
+import matplotlib.patches as mpatches
+import os
+import warnings
+from statsmodels.tools.sm_exceptions import PerfectSeparationWarning
+warnings.filterwarnings("ignore", category=PerfectSeparationWarning)
+
+bigfs = 9
+smallfs = 7
+plt.rcParams.update({"font.size": bigfs})
+plt.rcParams.update({"axes.titlesize": bigfs})
+plt.rcParams.update({"axes.labelsize": bigfs})
+plt.rcParams.update({"legend.fontsize": smallfs})
+plt.rcParams.update({"xtick.labelsize": smallfs})
+plt.rcParams.update({"ytick.labelsize": smallfs})
+
+
+cmapS = dict(
+    zip(
+        [1, 2, 4, 8, 16],
+        [
+            (0.0000, 0.4470, 0.7410),
+            (0.8500, 0.3250, 0.0980),
+            (0.9290, 0.6940, 0.1250),
+            (0.4940, 0.1840, 0.5560),
+            (0.4660, 0.6740, 0.1880),
+            (0.3010, 0.7450, 0.9330),
+            (0.6350, 0.0780, 0.1840),
+        ],
+    )
+)
+
+metric2title = dict(
+    x_focal=r"$x_{foc}$",
+    extr_nonfoc=r"$|X_{non\text{-}foc}|$",
+    absOm_tot=r"BN-$|\Omega|$",
+    absOm_foc=r"BN-$|\Omega_{foc}|$",
+    expI=r"Expected influence",
+)
+
+metric2titleVerb = dict(
+    x_focal=r"focal belief",
+    extr_nonfoc=r"extremity non-focal beliefs",
+    absOm_tot=r"connectedness BN",
+    absOm_foc=r"connectedness focal BN",
+    expI=r"expected influence on focal belief",
+)
+response_cols = [
+    "persistPos",
+    "nonpersistPos",
+    "compliant",
+    "resilient",
+    "resistant",
+    "latecompliant",
+]
+negcols = ["compliant", "resilient", "resistant"]
+
+
+belief_dimensions = [int(a) for a in range(10)]
+belief_columns = [str(int(a)) for a in belief_dimensions]
+edgelist = list(combinations(belief_dimensions, 2))
+edges_columns = [f"w{a}{b}" for a, b in edgelist]
+metric_cols = [
+    "absOm_tot",
+    "absOm_foc",
+    "expI",
+    "x_focal",
+    "extr_nonfoc",
+]
+metric_cols2 = [
+    "absOm_tot",
+    "absOm_foc",
+    "expI",
+    "x_focal",
+    "extr_nonfoc",
+]
+
+meta_cols = ["t", "id"]
+
+# cmap = dict(
+#     zip(
+#         response_cols + ["NA"],
+#         ["#4CAF50", "#AED581", "#2196F3", "#9C27B0", "#F44336", "#90CAF9", "#9E9E9E"],
+#     )
+# )
+names = {
+    (0.2, 0.0, False): r"static ($\omega_0=0.2$)",
+    (0.2, 1.0, False): r"adaptive ($\Omega_0=0.2$)",
+
+}
+
+# %%
+
+# ----------------------------------------------
+# -------    LOAD DATA
+# ----------------------------------------------
+# mean_absedges = []
+init_w = 0.2
+eps_values = [0.0, 1.0]
+fixedBNat100 = False
+
+res = pd.DataFrame()
+all_pressures = [1, 2, 4, 8, 16]
+seeds = range(0, 50)
+for eps in eps_values:
+    for s in all_pressures:
+        for seed in seeds:
+
+            df = pd.read_csv(
+                f"simOut_n1/sim_init_w{init_w:.2f}_beta3.00_eps{eps:.2f}"
+                f"{'_fixedBNat100' if fixedBNat100 else ''}"
+                f"_ext_strength{s}_seed{seed}.csv"
+            )
+
+            # responses = (
+            #     df.loc[df.t == 95.5][["id"] + response_cols]
+            #     .melt(id_vars=["id"])
+            #     .replace({False: np.nan})
+            #     .dropna()
+            # )
+            at_t = df.loc[df.t == 95.5, ["id"] + response_cols].copy()
+
+            active = at_t[response_cols].eq(True)
+
+            # Count active response categories per observation
+            n_active = active.sum(axis=1)
+
+            # Check that exactly one response category is assigned
+            if not (n_active == 1).all():
+                print("Classification problem:")
+                print(at_t.loc[n_active != 1])
+
+            vals = df.loc[df.t == 95.5, meta_cols + metric_cols].reset_index(drop=True)
+
+            # Assign the active response category
+            vals["response"] = active.idxmax(axis=1).where(n_active == 1).values
+            for x in ["init_w", "eps", "s", "seed"]:
+                vals[x] = eval(x)
+
+            res = pd.concat([res, vals], ignore_index=True)
+
+# ----------------------------------------------
+# -------    DIAGNOSTICS
+# ----------------------------------------------
+
+print("\nDATASET SIZE")
+print(res.shape)
+
+print("\nNUMBER OF OBSERVATIONS PER PRESSURE")
+print(res.groupby("s").size())
+
+print("\nRESPONSE COUNTS PER PRESSURE")
+print(
+    res.groupby(["s", "response"])
+    .size()
+    .unstack(fill_value=0)
+)
+
+print("\nRESPONSE COUNTS FOR REGRESSION")
+for s in all_pressures:
+    df_s = res.query("s == @s")
+
+    print(f"\nPressure = {s}")
+
+    print("Resistant:", (df_s.response == "resistant").sum())
+    print("Resilient:", (df_s.response == "resilient").sum())
+    print("Compliant:", (df_s.response == "compliant").sum())
+    print("Latecompliant:", (df_s.response == "latecompliant").sum())
+
+print("\nMETRIC VARIATION PER PRESSURE")
+print(
+    res.groupby("s")[metric_cols]
+    .agg(["count", "nunique", "std"])
+)
+print("\nRESPONSE COUNTS BY EPSILON AND PRESSURE")
+
+print(
+    res.groupby(["eps", "s", "response"])
+    .size()
+    .unstack(fill_value=0)
+)
+print("\nMETRIC SUMMARY BY EPSILON AND PRESSURE")
+
+print(
+    res.groupby(["eps", "s"])[metric_cols]
+    .mean()
+)
+# -------    CHECK RESPONSE CLASSIFICATIONS
+# ----------------------------------------------
+
+
+for s in all_pressures:
+    print(f"\nPressure = {s}")
+    print(
+        res.loc[res.s == s, ["seed", "response"]]
+    )
+
+# %%
+
+# ----------------------------------------------
+# -------    PRINT TABLE
+# ----------------------------------------------
+
+pressures = [1, 2, 4, 8, 16]
+for s_ext in pressures:
+    print(
+        "".join(["#"] * 50)
+        + f"\n time = 91-100\n"
+        + "".join(["#"] * 50)
+        + f"\n s_ext = {s_ext}\n"
+        + "".join(["#"] * 50)
+    )
+    print(" & " + " & ".join([""] + negcols) + " & \\\\ \\hline")
+    metrics_table = [
+    "x_focal",
+    "extr_nonfoc",
+    "absOm_tot",
+    "absOm_foc",
+    "expI",
+]
+    for metric in metrics_table:
+        print(f"{metric2titleVerb[metric]} &  " + f"{metric2title[metric]} &  ", end="")
+        for r in negcols:
+            a = res.loc[(res.response == r) & (res.s == s_ext), metric]  # .mean()
+            if len(a) > 0:
+                print(f"${a.mean():.2f} \\pm {a.std():.2f}$", end=" & ")
+            else:
+                print(" ", end=" & ")
+        print("\\\\")
+
+        if metric == metrics_table[-1]:
+            print(f"proportion &  & ", end="")
+            props = (
+    res.loc[res.s == s_ext, "response"]
+    .value_counts()
+    .reindex(negcols, fill_value=0)
+)
+            summeNeg = (
+                props[negcols].sum()
+                if "resistant" in props
+                else props[["compliant", "resilient"]].sum()
+            )
+            for r in negcols:
+                if r in props:
+                    print(
+                        f"${100*props[r]/summeNeg:.1f}\,\%$",
+                        end=" & ",
+                    )
+                else:
+                    print(f"${0.0:.1f}\,\%$ & ")
+            print("\\\\")
+
+
+# %%
+
+# ----------------------------------------------
+# -------    Exploration
+# ----------------------------------------------
+# res.query("s==1 and eps==1").groupby("response")[metric_cols].mean().loc[['compliant',
+#  'resilient',
+#  'resistant']].T
+# %%
+
+
+# plt.rcParams.update({"font.size": 10})
+# bigfs = 16
+# smallfs = 15
+# plt.rcParams.update({"font.size": bigfs})
+# plt.rcParams.update({"axes.titlesize": bigfs})
+# plt.rcParams.update({"axes.labelsize": bigfs})
+# plt.rcParams.update({"legend.fontsize": smallfs})
+# plt.rcParams.update({"xtick.labelsize": smallfs})
+# plt.rcParams.update({"ytick.labelsize": smallfs})
+# s4 = res.query("s==4 and eps==1")
+# sns.pairplot(
+#     s4.loc[
+#         s4.response.isin(["compliant", "resilient", "resistant"]),
+#         metric_cols2 + ["response"],
+#     ],
+#     hue="response",
+#     palette=cmap,
+# )
+
+# %%
+
+# ----------------------------------------------
+# -------    COHENS D
+# ----------------------------------------------
+
+
+def cohens_d(a, b):
+    var_a = a.var()
+    var_b = b.var()
+
+    n_a = a.count()
+    n_b = b.count()
+
+    pooled_var = (
+        (n_a - 1) * var_a + (n_b - 1) * var_b
+    ) / (n_a + n_b - 2)
+
+    pooled_var[pooled_var < 1e-10] = 0
+
+    with np.errstate(invalid="ignore", divide="ignore"):
+        d = (a.mean() - b.mean()) / pooled_var**0.5
+
+    return d.where(pooled_var > 0, other=np.nan)
+
+# res["noncompliant"] = np.nan
+# res.loc[res.response.isin(["resistant", "resilient"]), "noncompliant"] = 1
+# res.loc[res.response.isin(["compliant"]), "noncompliant"] = 0
+
+pressures = [1, 2, 4, 8, 16]
+cds_df = []
+
+
+for eps in eps_values:
+    for s in pressures:
+        res_s = res.query(f"s=={s} and eps=={eps}")
+
+        for ty in ["rR-C", "R-r"]:
+
+            label_map = dict(zip(response_cols, [np.nan] * len(response_cols)))
+
+            if ty == "R-r":
+                label_map["resistant"] = 1
+                label_map["resilient"] = 0
+
+            elif ty == "rR-C":
+                label_map["resistant"] = 1
+                label_map["resilient"] = 1
+                label_map["compliant"] = 0
+                label_map["latecompliant"] = 0
+
+            allagents = res_s.copy()
+            allagents["response_group"] = allagents["response"].map(label_map)
+            allagents = allagents.dropna(subset=["response_group"])
+
+            group = allagents.loc[
+                allagents["response_group"] == 1, metric_cols2
+            ]
+            base = allagents.loc[
+                allagents["response_group"] == 0, metric_cols2
+            ]
+
+            cds = cohens_d(group, base)
+
+            for metric in metric_cols2:
+                cds_df.append(
+                    [eps, s, metric2title[metric],
+                     metric2titleVerb[metric], ty, cds.loc[metric]]
+                )
+
+cohensd_df = pd.DataFrame(
+    cds_df,
+    columns=["eps", "s", "metricMath", "metric", "type", "d"]
+)
+print(cohensd_df.shape)
+print(cohensd_df.groupby("eps").size())
+# %%
+# ----------------------------------------------
+# -------    REGRESSION
+# ----------------------------------------------
+from sklearn.preprocessing import StandardScaler
+import statsmodels.api as sm
+from statsmodels.tools.sm_exceptions import PerfectSeparationError
+
+predictor_vars = [
+    "absOm_foc",
+    "x_focal",
+]
+control_vars = []
+coef_df = pd.DataFrame()
+for eps in eps_values:
+    for s in pressures:
+        for ty in ["rR-C", "R-r"]:
+
+            df = res.query(f"s=={s} and eps=={eps}").copy()
+
+            label_map = dict(zip(response_cols, [np.nan] * len(response_cols)))
+
+            if ty == "R-r":
+                label_map["resistant"] = 1
+                label_map["resilient"] = 0
+
+            elif ty == "rR-C":
+                label_map["resistant"] = 1
+                label_map["resilient"] = 1
+                label_map["compliant"] = 0
+                label_map["latecompliant"] = 0
+
+            df["response_group"] = df["response"].map(label_map)
+            df = df.dropna(subset=["response_group"] + predictor_vars + control_vars)
+            y = df["response_group"].values
+            if len(np.unique(y)) < 2:
+                print("Skipping regression: only one outcome category.")
+                continue
+            print("Observations used:", len(df))
+            print("Outcome counts:")
+            print(df["response_group"].value_counts())
+
+            X = df[predictor_vars + control_vars]
+
+            predictor_std = X.std()
+
+            print("Predictor variation:")
+            print(predictor_std)
+
+            print("\nNumber of unique values:")
+            print(X.nunique())
+
+            X = X.loc[:, predictor_std > 1e-6]
+
+            print("\nUnique values in retained predictors:")
+            print(X.nunique())
+
+        
+
+            # Check whether any predictors remain
+            if X.empty:
+                print("Skipping regression: no predictors with variation.")
+                continue
+
+            # Standardize the remaining predictors
+            scaler = StandardScaler()
+
+            X_scaled_df = pd.DataFrame(
+                scaler.fit_transform(X),
+                columns=X.columns,
+                index=X.index
+            )
+
+            try:
+                model = sm.Logit(
+                    y, sm.add_constant(X_scaled_df)
+                ).fit(disp=False, maxiter=100)
+
+            except (np.linalg.LinAlgError, PerfectSeparationError) as e:
+                print(f"Skipping regression: {e}")
+                continue
+
+            if not model.mle_retvals["converged"]:
+                print("Skipping regression: model did not converge.")
+                continue
+
+            predictors = X_scaled_df.columns
+
+            confidence_intervals = model.conf_int()
+
+            coefs = pd.DataFrame(
+                {
+                    "coefficient": model.params.loc[predictors],
+                    "odds_ratio": np.exp(model.params.loc[predictors]),
+                    "pvalue": model.pvalues.loc[predictors],
+                    "ci_low": confidence_intervals.loc[predictors, 0],
+                    "ci_high": confidence_intervals.loc[predictors, 1],
+                },
+                index=predictors
+            )
+
+            coefs["type"] = ty
+            coefs["s"] = s
+            coefs["eps"] = eps
+
+            print(f"\n{ty} --- Intercept: {model.params['const']:.4f}")
+            print(f"{ty} --- Pseudo R²:  {model.prsquared:.4f}")  # better than accuracy
+
+            coef_df = pd.concat([coef_df, coefs])
+
+coef_df["metric"] = coef_df.index.map(metric2titleVerb)
+
+
+combined = (
+    cohensd_df.set_index(["type", "metric", "s", "eps"])
+    .join(coef_df.set_index(["type", "metric", "s", "eps"])["coefficient"])
+    .reset_index()
+)
+# ----------------------------------------------
+# -------    PLOTTING
+# ----------------------------------------------
+
+# %%
+showRegression = True
+diss = False
+nmetric = len(combined.metric.unique())
+fig, axs = plt.subplots(1, 2, sharex=True, sharey=True, figsize=(18 / 2.54, 8 / 2.54))
+# axs[0].scatter([],[],marker="o", c="grey", s=5, edgecolor="grey", label="regression\ncoefficient")
+if showRegression:
+    dotpatch = mpl.lines.Line2D(
+        [0],
+        [0],
+        marker="o",
+        linestyle="None",
+        markerfacecolor="lightgrey",
+        markeredgecolor="grey",
+        markeredgewidth=0.7,
+        markersize=4,
+        label="regression\ncoefficient",
+    )
+patch = mpatches.Patch(color="grey", label=r"Cohen's $d$")
+axs[0].legend(
+    handles=[patch] if not showRegression else [patch, dotpatch],
+    fontsize=smallfs,
+    borderpad=0.25,
+    handlelength=1,
+    handleheight=0.5,
+    handletextpad=0.7,
+    facecolor="gainsboro",
+    loc="lower right",
+    edgecolor="none",
+    framealpha=0.5,
+)
+for n, ty in enumerate(["rR-C", "R-r"]):
+    ax = axs[n]
+    ss = [1, 2, 4] if ty == "R-r" else [1, 2, 4, 8, 16]
+    plot_df = combined.loc[(cohensd_df.type == ty) & (combined.s.isin(ss))].sort_values(
+        "s", ascending=False
+    )
+    metric_order = list(metric2titleVerb.values())[::-1]
+    sns.barplot(
+        plot_df,
+        x="d",
+        y="metric",
+        hue="s",
+        hue_order=pressures[::-1],
+        dodge=True,
+        ax=ax,
+        palette=cmapS,
+        legend=False,
+        zorder=10,
+        order=metric_order,
+        errorbar=None,
+        alpha=0.8,
+        lw=0,
+    )
+    if showRegression:
+        ax2 = ax.twiny()
+        if metric2titleVerb["x_focal"] in plot_df.metric.values:
+            print("control for x_focal")
+            plot_df = plot_df.loc[
+                ~(plot_df.metric == metric2titleVerb["x_focal"])
+            ].copy()
+        sns.stripplot(
+            data=plot_df.dropna(subset=["coefficient"]),
+            x="coefficient",
+            y="metric",
+            hue="s",
+            hue_order=pressures[::-1],
+            order=metric_order,
+            dodge=True,
+            jitter=False,
+            palette=cmapS,
+            ax=ax2,
+            legend=False,
+            size=3,
+            zorder=20,
+            edgecolor="k",
+            linewidth=0.4,
+        )
+        ax2.set_xlabel("Regression Coefficient (dots)", fontsize=smallfs)
+        if diss:
+            ax2.set_xlim(-1, 1)
+        else:
+            ax2.set_xlim(-3, 3)
+    ax.set_xlabel(r"Cohen's $d$ (bars)", fontsize=smallfs)
+    ax.set_title(
+        (
+            "\nResistant/Resilient vs. Compliant"
+            if ty == "rR-C"
+            else "\nResistant vs. Resilient"
+        ),
+        fontsize=bigfs + 1,
+    )
+    ax.set_ylabel("")
+    maxy = (
+        np.argsort(
+            [p.get_y() for p in ax.patches],
+        )[-10:-5]
+        if n == 0
+        else np.argsort(
+            [p.get_y() for p in ax.patches],
+        )[-6:-3]
+    )
+    for kk, (barind, text) in enumerate(zip(maxy, [rf"$s={s}$" for s in ss[::-1]])):
+        bar = ax.patches[barind]
+        h = bar.get_width()
+        if np.isnan(h):
+            continue
+
+        y = bar.get_y() + bar.get_height() / 2
+        x = bar.get_width()
+        bar_fc = bar.get_facecolor()
+        ax.annotate(
+            text,
+            xy=(x, y),
+            xytext=(
+                1.2,
+                y
+                + (1.3 if n == 0 else 1)
+                - (0.56 if n == 0 else 0.36) * (len(maxy) - kk),
+            ),
+            ha="left",
+            va="center",
+            rotation=0,
+            fontsize=smallfs - 1,
+            arrowprops=dict(
+                arrowstyle="-",
+                lw=1,
+                connectionstyle="arc,rad=0.1",  # vertical then tilt
+                color=bar_fc,
+            ),
+            bbox={"pad": 0.02, "fc": "white", "ec": "none"},
+            color=bar_fc,
+            zorder=20,
+        )
+
+    ax.vlines([0], -0.5, nmetric + 0.5, lw=0.5, color="grey")
+    xlim = 2
+    ax.hlines([0.5 + k for k in range(nmetric)], -xlim, xlim, lw=0.5, color="grey")
+    ax.hlines(
+        [nmetric - 2.5, nmetric - 3.5, nmetric - 9.5], -xlim, xlim, lw=1.5, color="grey"
+    )
+    ax.set_ylim(-0.5, nmetric - 0.5)
+    ax.set_xlim(-xlim, xlim)
+    if showRegression:
+        ax2.set_ylim(ax.get_ylim())
+
+# draw once so tick labels exist
+fig.canvas.draw()
+if showRegression:
+    for label in axs[0].get_yticklabels():
+        if label.get_text() in list(coef_df.metric.unique()):
+            label.set_fontweight("bold")
+
+
+fig.subplots_adjust(
+    left=0.2, top=0.82 if showRegression else 0.92, right=0.98, bottom=0.12
+)
+fname = f"2026-04_figs/fig4_{names[(init_w, eps, fixedBNat100)]}"
+
+if not os.path.isdir(fname.split("/")[0]):
+    os.mkdir(fname.split("/")[0])
+
+print(fname)
+plt.savefig(fname + ".png", dpi=600)
+plt.savefig(fname + ".pdf")
+
+print(combined)
+# %%

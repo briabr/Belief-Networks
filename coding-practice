@@ -1,0 +1,57 @@
+
+
+
+
+# from itertools import count
+
+
+# def calculate_difference(a,b):
+#     diff = a - b
+#     if diff < 0: 
+#       return diff
+#     else:
+#        return a -b 
+    
+
+# def classify_difference(a, b):
+#    if a -b > 0:
+#       return "positive"
+#    elif a - b < 0:
+#       return "negative"
+#    else:
+#       return "zero"
+
+#    def is_positive(a, b):
+#       if a - b > 0:
+#          return True
+#       return False
+   
+# def count_positive(list):
+#    count = 0
+#    for val in list:
+#       if val > 0:
+#          count += 1
+#       return count 
+
+def count_negative(values):
+   negative_count = 0
+   for val in values:
+      if val < 0:
+         negative_count += 1
+   return negative_count
+
+count_negative([-1, 2, -3, 4, -5]) 
+   
+def count_positive_negative(values):
+    positive_count =0
+    negative_count = 0
+    for val in values:
+       if val > 0:
+          positive_count += 1
+       elif val < 0:
+          negative_count +=1 
+    return positive_count, negative_count
+
+   
+
+   

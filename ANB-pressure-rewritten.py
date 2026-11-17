@@ -22,7 +22,7 @@ T = 200
 beforeRange = list(range(91, 101))
 duringRange = list(range(141, 151))
 afterRange = list(range(191, 201))
-detail = True
+detail = False
 
 track_times = (
     np.arange(T + 1)
@@ -379,7 +379,7 @@ if __name__ == "__main__":
     for p in param_combis
     for pressure in pressures
 ]
-    seeds = list(range(0, 5))    
+    seeds = list(range(0, 50))    
     if detail and len(seeds) > 10:
         print("...this will take very long")
         quit()
@@ -397,7 +397,7 @@ if __name__ == "__main__":
         )
     # PRINT PRESSURE RESULTS
     pressures = [0, 1, 2, 4, 8, 16]
-    seeds = range(5)
+    seeds = range(50)
     eps_values = [0.0, 1.0]
 
     print("\n" + "=" * 80)
