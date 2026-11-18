@@ -73,13 +73,7 @@ metric_cols = [
     "x_focal",
     "extr_nonfoc",
 ]
-metric_cols2 = [
-    "absOm_tot",
-    "absOm_foc",
-    "expI",
-    "x_focal",
-    "extr_nonfoc",
-]
+
 
 meta_cols = ["t", "id"]
 
@@ -207,54 +201,55 @@ for s in all_pressures:
 # -------    PRINT TABLE
 # ----------------------------------------------
 
-pressures = [1, 2, 4, 8, 16]
-for s_ext in pressures:
-    print(
-        "".join(["#"] * 50)
-        + f"\n time = 91-100\n"
-        + "".join(["#"] * 50)
-        + f"\n s_ext = {s_ext}\n"
-        + "".join(["#"] * 50)
+for eps in eps_values:
+    for s_ext in all_pressures:
+        print(
+            "".join(["#"] * 50)
+            + f"\n time = 91-100\n"
+            + "".join(["#"] * 50)
+            + f"\n s_ext = {s_ext}\n"
+            + f"\n eps = {eps}\n"
+            + "".join(["#"] * 50)
     )
-    print(" & " + " & ".join([""] + negcols) + " & \\\\ \\hline")
-    metrics_table = [
-    "x_focal",
-    "extr_nonfoc",
-    "absOm_tot",
-    "absOm_foc",
-    "expI",
-]
-    for metric in metrics_table:
-        print(f"{metric2titleVerb[metric]} &  " + f"{metric2title[metric]} &  ", end="")
-        for r in negcols:
-            a = res.loc[(res.response == r) & (res.s == s_ext), metric]  # .mean()
-            if len(a) > 0:
-                print(f"${a.mean():.2f} \\pm {a.std():.2f}$", end=" & ")
-            else:
-                print(" ", end=" & ")
-        print("\\\\")
-
-        if metric == metrics_table[-1]:
-            print(f"proportion &  & ", end="")
-            props = (
-    res.loc[res.s == s_ext, "response"]
-    .value_counts()
-    .reindex(negcols, fill_value=0)
-)
-            summeNeg = (
-                props[negcols].sum()
-                if "resistant" in props
-                else props[["compliant", "resilient"]].sum()
-            )
+        print(" & " + " & ".join([""] + negcols) + " & \\\\ \\hline")
+        metrics_table = [
+        "x_focal",
+        "extr_nonfoc",
+        "absOm_tot",
+        "absOm_foc",
+        "expI",
+    ]
+        for metric in metrics_table:
+            print(f"{metric2titleVerb[metric]} &  " + f"{metric2title[metric]} &  ", end="")
             for r in negcols:
-                if r in props:
-                    print(
-                        f"${100*props[r]/summeNeg:.1f}\,\%$",
-                        end=" & ",
-                    )
+                a = res.loc[(res.response == r) & (res.s == s_ext) & (res.eps == eps), metric]  # .mean()
+                if len(a) > 0:
+                    print(f"${a.mean():.2f} \\pm {a.std():.2f}$", end=" & ")
                 else:
-                    print(f"${0.0:.1f}\,\%$ & ")
+                    print(" ", end=" & ")
             print("\\\\")
+
+            if metric == metrics_table[-1]:
+                print(f"proportion &  & ", end="")
+                props = (
+                res.loc[(res.s == s_ext) & (res.eps == eps), "response"]
+                .value_counts()
+                .reindex(negcols, fill_value=0)
+            )
+                summeNeg = (
+                    props[negcols].sum()
+                    if "resistant" in props
+                    else props[["compliant", "resilient"]].sum()
+                )
+                for r in negcols:
+                    if r in props:
+                        print(
+                            f"${100*props[r]/summeNeg:.1f}\,\%$",
+                            end=" & ",
+                        )
+                    else:
+                            print(f"${0.0:.1f}\,\%$ & ")
+                print("\\\\")
 
 
 # %%
@@ -316,12 +311,11 @@ def cohens_d(a, b):
 # res.loc[res.response.isin(["resistant", "resilient"]), "noncompliant"] = 1
 # res.loc[res.response.isin(["compliant"]), "noncompliant"] = 0
 
-pressures = [1, 2, 4, 8, 16]
 cds_df = []
 
 
 for eps in eps_values:
-    for s in pressures:
+    for s in all_pressures:
         res_s = res.query(f"s=={s} and eps=={eps}")
 
         for ty in ["rR-C", "R-r"]:
@@ -343,15 +337,15 @@ for eps in eps_values:
             allagents = allagents.dropna(subset=["response_group"])
 
             group = allagents.loc[
-                allagents["response_group"] == 1, metric_cols2
+                allagents["response_group"] == 1, metric_cols
             ]
             base = allagents.loc[
-                allagents["response_group"] == 0, metric_cols2
+                allagents["response_group"] == 0, metric_cols
             ]
 
             cds = cohens_d(group, base)
 
-            for metric in metric_cols2:
+            for metric in metric_cols:
                 cds_df.append(
                     [eps, s, metric2title[metric],
                      metric2titleVerb[metric], ty, cds.loc[metric]]
@@ -378,7 +372,7 @@ predictor_vars = [
 control_vars = []
 coef_df = pd.DataFrame()
 for eps in eps_values:
-    for s in pressures:
+    for s in all_pressures:
         for ty in ["rR-C", "R-r"]:
 
             df = res.query(f"s=={s} and eps=={eps}").copy()
@@ -474,8 +468,6 @@ for eps in eps_values:
             coef_df = pd.concat([coef_df, coefs])
 
 coef_df["metric"] = coef_df.index.map(metric2titleVerb)
-
-
 combined = (
     cohensd_df.set_index(["type", "metric", "s", "eps"])
     .join(coef_df.set_index(["type", "metric", "s", "eps"])["coefficient"])
@@ -528,7 +520,7 @@ for n, ty in enumerate(["rR-C", "R-r"]):
         x="d",
         y="metric",
         hue="s",
-        hue_order=pressures[::-1],
+        hue_order=all_pressures[::-1],
         dodge=True,
         ax=ax,
         palette=cmapS,
@@ -551,7 +543,7 @@ for n, ty in enumerate(["rR-C", "R-r"]):
             x="coefficient",
             y="metric",
             hue="s",
-            hue_order=pressures[::-1],
+            hue_order=all_pressures[::-1],
             order=metric_order,
             dodge=True,
             jitter=False,
