@@ -10,6 +10,9 @@ import os
 import warnings
 from statsmodels.tools.sm_exceptions import PerfectSeparationWarning
 warnings.filterwarnings("ignore", category=PerfectSeparationWarning)
+from sklearn.preprocessing import StandardScaler
+import statsmodels.api as sm
+from statsmodels.tools.sm_exceptions import PerfectSeparationError
 
 bigfs = 9
 smallfs = 7
@@ -30,8 +33,6 @@ cmapS = dict(
             (0.9290, 0.6940, 0.1250),
             (0.4940, 0.1840, 0.5560),
             (0.4660, 0.6740, 0.1880),
-            (0.3010, 0.7450, 0.9330),
-            (0.6350, 0.0780, 0.1840),
         ],
     )
 )
@@ -62,10 +63,10 @@ response_cols = [
 negcols = ["compliant", "resilient", "resistant"]
 
 
-belief_dimensions = [int(a) for a in range(10)]
-belief_columns = [str(int(a)) for a in belief_dimensions]
-edgelist = list(combinations(belief_dimensions, 2))
-edges_columns = [f"w{a}{b}" for a, b in edgelist]
+# belief_dimensions = [int(a) for a in range(10)]
+# belief_columns = [str(int(a)) for a in belief_dimensions]
+# edgelist = list(combinations(belief_dimensions, 2))
+# edges_columns = [f"w{a}{b}" for a, b in edgelist]
 metric_cols = [
     "absOm_tot",
     "absOm_foc",
@@ -149,27 +150,9 @@ print(res.shape)
 print("\nNUMBER OF OBSERVATIONS PER PRESSURE")
 print(res.groupby("s").size())
 
-print("\nRESPONSE COUNTS PER PRESSURE")
-print(
-    res.groupby(["s", "response"])
-    .size()
-    .unstack(fill_value=0)
-)
-
-print("\nRESPONSE COUNTS FOR REGRESSION")
-for s in all_pressures:
-    df_s = res.query("s == @s")
-
-    print(f"\nPressure = {s}")
-
-    print("Resistant:", (df_s.response == "resistant").sum())
-    print("Resilient:", (df_s.response == "resilient").sum())
-    print("Compliant:", (df_s.response == "compliant").sum())
-    print("Latecompliant:", (df_s.response == "latecompliant").sum())
-
 print("\nMETRIC VARIATION PER PRESSURE")
 print(
-    res.groupby("s")[metric_cols]
+    res.groupby(["eps", "s"])[metric_cols]
     .agg(["count", "nunique", "std"])
 )
 print("\nRESPONSE COUNTS BY EPSILON AND PRESSURE")
@@ -189,17 +172,16 @@ print(
 # ----------------------------------------------
 
 
-for s in all_pressures:
-    print(f"\nPressure = {s}")
-    print(
-        res.loc[res.s == s, ["seed", "response"]]
-    )
-
-# %%
-
 # ----------------------------------------------
 # -------    PRINT TABLE
 # ----------------------------------------------
+metrics_table = [
+        "x_focal",
+        "extr_nonfoc",
+        "absOm_tot",
+        "absOm_foc",
+        "expI",
+    ]
 
 for eps in eps_values:
     for s_ext in all_pressures:
@@ -210,15 +192,9 @@ for eps in eps_values:
             + f"\n s_ext = {s_ext}\n"
             + f"\n eps = {eps}\n"
             + "".join(["#"] * 50)
-    )
+        )
         print(" & " + " & ".join([""] + negcols) + " & \\\\ \\hline")
-        metrics_table = [
-        "x_focal",
-        "extr_nonfoc",
-        "absOm_tot",
-        "absOm_foc",
-        "expI",
-    ]
+        
         for metric in metrics_table:
             print(f"{metric2titleVerb[metric]} &  " + f"{metric2title[metric]} &  ", end="")
             for r in negcols:
@@ -231,24 +207,25 @@ for eps in eps_values:
 
             if metric == metrics_table[-1]:
                 print(f"proportion &  & ", end="")
+
                 props = (
-                res.loc[(res.s == s_ext) & (res.eps == eps), "response"]
-                .value_counts()
-                .reindex(negcols, fill_value=0)
-            )
-                summeNeg = (
-                    props[negcols].sum()
-                    if "resistant" in props
-                    else props[["compliant", "resilient"]].sum()
+                    res.loc[(res.s == s_ext) & (res.eps == eps), "response"]
+                    .value_counts()
+                    .reindex(negcols, fill_value=0)
                 )
+                summeNeg = props[negcols].sum()
+                if summeNeg > 0:
+                    for r in negcols:
+                        print(f"${100*props[r]/summeNeg:.1f}\\,\\%$", end=" & ")
+                else:
+                    for r in negcols:
+                        print(" ", end=" & ")
+
                 for r in negcols:
-                    if r in props:
-                        print(
-                            f"${100*props[r]/summeNeg:.1f}\,\%$",
-                            end=" & ",
-                        )
-                    else:
-                            print(f"${0.0:.1f}\,\%$ & ")
+                    print(
+                        f"${100*props[r]/summeNeg:.1f}\,\%$",
+                        end=" & ",
+                    )
                 print("\\\\")
 
 
@@ -361,10 +338,6 @@ print(cohensd_df.groupby("eps").size())
 # ----------------------------------------------
 # -------    REGRESSION
 # ----------------------------------------------
-from sklearn.preprocessing import StandardScaler
-import statsmodels.api as sm
-from statsmodels.tools.sm_exceptions import PerfectSeparationError
-
 predictor_vars = [
     "absOm_foc",
     "x_focal",
