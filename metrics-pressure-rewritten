@@ -446,17 +446,7 @@ combined = (
     .join(coef_df.set_index(["type", "metric", "s", "eps"])["coefficient"])
     .reset_index()
 )
-print("Combined shape:", combined.shape)
 
-print("\nRows per epsilon:")
-print(combined.groupby("eps").size())
-
-print("\nDuplicate keys:")
-print(
-    combined.duplicated(
-        subset=["type", "metric", "s", "eps"]
-    ).sum()
-)
 # ----------------------------------------------
 # -------    PLOTTING
 # ----------------------------------------------

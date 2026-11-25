@@ -1,0 +1,338 @@
+# %%
+import numpy as np
+import pandas as pd
+from itertools import combinations
+import matplotlib.pyplot as plt
+import seaborn as sns
+import matplotlib as mpl
+import matplotlib.patches as mpatches
+import os
+import warnings
+from statsmodels.tools.sm_exceptions import PerfectSeparationWarning
+warnings.filterwarnings("ignore", category=PerfectSeparationWarning)
+from sklearn.preprocessing import StandardScaler
+import statsmodels.api as sm
+from statsmodels.tools.sm_exceptions import PerfectSeparationError
+
+bigfs = 9
+smallfs = 7
+plt.rcParams.update({"font.size": bigfs})
+plt.rcParams.update({"axes.titlesize": bigfs})
+plt.rcParams.update({"axes.labelsize": bigfs})
+plt.rcParams.update({"legend.fontsize": smallfs})
+plt.rcParams.update({"xtick.labelsize": smallfs})
+plt.rcParams.update({"ytick.labelsize": smallfs})
+
+
+
+metric2title = dict(
+    x_focal=r"$x_{foc}$",
+    extr_nonfoc=r"$|X_{non\text{-}foc}|$",
+    absOm_tot=r"BN-$|\Omega|$",
+    absOm_foc=r"BN-$|\Omega_{foc}|$",
+    expI=r"Expected influence",
+)
+
+metric2titleVerb = dict(
+    x_focal=r"focal belief",
+    extr_nonfoc=r"extremity non-focal beliefs",
+    absOm_tot=r"connectedness BN",
+    absOm_foc=r"connectedness focal BN",
+    expI=r"expected influence on focal belief",
+)
+response_cols = [
+    "persistPos",
+    "nonpersistPos",
+    "compliant",
+    "resilient",
+    "resistant",
+    "latecompliant",
+]
+negcols = ["compliant", "resilient", "resistant"]
+
+
+# belief_dimensions = [int(a) for a in range(10)]
+# belief_columns = [str(int(a)) for a in belief_dimensions]
+# edgelist = list(combinations(belief_dimensions, 2))
+# edges_columns = [f"w{a}{b}" for a, b in edgelist]
+metric_cols = [
+    "absOm_tot",
+    "absOm_foc",
+    "expI",
+    "x_focal",
+    "extr_nonfoc",
+]
+
+
+meta_cols = ["t", "id"]
+names = {
+    (0.2, 0.0, False): r"static ($\omega_0=0.2$)",
+    (0.2, 1.0, False): r"adaptive ($\Omega_0=0.2$)",
+
+}
+
+# %%
+
+# ----------------------------------------------
+# -------    LOAD DATA
+# ----------------------------------------------
+# mean_absedges = []
+init_w = 0.2
+eps_values = [0.0, 1.0]
+fixedBNat100 = False
+
+res = pd.DataFrame()
+seeds = range(0, 50)
+for eps in eps_values:
+        for seed in seeds:
+            df = pd.read_csv(
+            f"simOut_n1_nopressure/"
+            f"sim_init_w0.20_beta3.00_eps{eps:.2f}"
+            f"_seed{seed}.csv"
+        )
+            print("\nCSV COLUMN NAMES:")
+            print(df.columns.tolist())
+
+            print("\nFIRST FIVE ROWS:")
+            print(df.head())
+            vals = df.loc[
+            df.t == 95.5,
+            meta_cols + metric_cols
+            ].reset_index(drop=True)
+
+            for x in ["init_w", "eps", "seed"]:
+                vals[x] = eval(x)
+
+            res = pd.concat([res, vals], ignore_index=True)
+
+# ----------------------------------------------
+# -------    DIAGNOSTICS
+# ----------------------------------------------
+print("\nDATASET SIZE")
+print(res.shape)
+
+print("\nNUMBER OF OBSERVATIONS PER EPSILON")
+print(res.groupby("eps").size())
+
+print("\nMETRIC VARIATION PER EPSILON")
+print(
+    res.groupby("eps")[metric_cols]
+    .agg(["count", "nunique", "std"])
+)
+
+print("\nMETRIC SUMMARY BY EPSILON")
+print(
+    res.groupby("eps")[metric_cols]
+    .mean()
+)
+# ---------------------------------------------
+# -------    PRINT TABLE
+# ----------------------------------------------
+metrics_table = [
+    "x_focal",
+    "extr_nonfoc",
+    "absOm_tot",
+    "absOm_foc",
+    "expI",
+]
+
+for eps in eps_values:
+    print(
+        "".join(["#"] * 50)
+        + "\n time = 91-100\n"
+        + "".join(["#"] * 50)
+        + f"\n eps = {eps}\n"
+        + "".join(["#"] * 50)
+    )
+
+    print(" & " + " & ".join([""] + negcols) + " & \\\\\\ \\hline")
+
+    for metric in metrics_table:
+        print(
+            f"{metric2titleVerb[metric]} &  "
+            + f"{metric2title[metric]} &  ",
+            end="",
+        )
+
+        for r in negcols:
+            a = res.loc[
+                 (res.eps == eps),
+                metric
+            ]
+
+            if len(a) > 0:
+                print(f"${a.mean():.2f} \\pm {a.std():.2f}$", end=" & ")
+            else:
+                print(" ", end=" & ")
+
+        print("\\\\")
+
+        if metric == metrics_table[-1]:
+            print("proportion &  & ", end="")
+
+            props = (
+                res.loc[res.eps == eps]
+                .value_counts()
+                .reindex(negcols, fill_value=0)
+            )
+
+            summeNeg = props[negcols].sum()
+
+            if summeNeg > 0:
+                for r in negcols:
+                    print(
+                        f"${100 * props[r] / summeNeg:.1f}\\,\\%$",
+                        end=" & ",
+                    )
+            else:
+                for r in negcols:
+                    print(" ", end=" & ")
+
+            print("\\\\")
+# %%
+
+# ----------------------------------------------
+# -------    COHENS D
+# ----------------------------------------------
+def cohens_d(a, b):
+    var_a = a.var()
+    var_b = b.var()
+
+    n_a = a.count()
+    n_b = b.count()
+
+    pooled_var = (
+        (n_a - 1) * var_a + (n_b - 1) * var_b
+    ) / (n_a + n_b - 2)
+
+    pooled_var[pooled_var < 1e-10] = 0
+
+    with np.errstate(invalid="ignore", divide="ignore"):
+        d = (a.mean() - b.mean()) / pooled_var**0.5
+
+    return d.where(pooled_var > 0, other=np.nan)
+# Compare eps=1 against eps=0
+
+eps0 = res.loc[res["eps"] == 0.0, metric_cols]
+eps1 = res.loc[res["eps"] == 1.0, metric_cols]
+
+print("Number of observations:")
+print("eps=0:", len(eps0))
+print("eps=1:", len(eps1))
+
+# Calculate Cohen's d
+cds = cohens_d(eps1, eps0)
+
+# Store results
+cds_df = []
+
+for metric in metric_cols:
+    cds_df.append(
+        [
+            "eps=1 vs eps=0",
+            metric2title[metric],
+            metric2titleVerb[metric],
+            cds.loc[metric]
+        ]
+    )
+
+cohensd_df = pd.DataFrame(
+    cds_df,
+    columns=["comparison", "metricMath", "metric", "d"]
+)
+
+print("\nCohen's d results:")
+print(cohensd_df.to_string(index=False))
+# ----------------------------------------------
+# -------    REGRESSION
+# ----------------------------------------------
+predictor_vars = [
+    "absOm_foc",
+    "x_focal",
+]
+# Binary dependent variable
+y = res["eps"]
+
+# Independent variables
+X = res[predictor_vars].copy()
+
+# Check predictor variation
+print("\nPredictor variation:")
+print(X.std())
+
+print("\nNumber of unique values:")
+print(X.nunique())
+
+# Standardize predictors
+scaler = StandardScaler()
+
+X_scaled_df = pd.DataFrame(
+    scaler.fit_transform(X),
+    columns=X.columns,
+    index=X.index
+)
+
+# Add intercept
+X_scaled = sm.add_constant(X_scaled_df)
+
+# Estimate logistic regression
+model = sm.Logit(y, X_scaled).fit(
+    disp=False,
+    maxiter=100
+)
+
+print("\nLOGISTIC REGRESSION RESULTS")
+print(model.summary())
+# ----------------------------------------------
+# -------    PLOTTING
+# ----------------------------------------------
+# Create figure and axis
+fig, ax = plt.subplots(
+    figsize=(18 / 2.54, 8 / 2.54)
+)
+
+# Define metric order
+metric_order = list(metric2titleVerb.values())[::-1]
+
+# Create horizontal bar plot
+sns.barplot(
+    data=cohensd_df,
+    x="d",
+    y="metric",
+    order=metric_order,
+    ax=ax,
+    color="grey",
+    errorbar=None,
+)
+
+# Add vertical reference line at zero
+ax.axvline(
+    0,
+    color="black",
+    linewidth=0.8
+)
+
+# Label axes
+ax.set_xlabel(r"Cohen's $d$", fontsize=smallfs)
+ax.set_ylabel("")
+
+# Add title
+ax.set_title(
+    "Individual belief dynamics: Static vs adaptive",
+    fontsize=bigfs + 1
+)
+
+# Adjust layout
+fig.tight_layout()
+
+# Save figure
+fname = "2026-11_figs/individual_nopressure_cohensd"
+
+if not os.path.isdir("2026-11_figs"):
+    os.mkdir("2026-11_figs")
+
+plt.savefig(fname + ".png", dpi=600)
+plt.savefig(fname + ".pdf")
+
+plt.show()
+plt.close(fig)

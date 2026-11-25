@@ -20,7 +20,7 @@ T = 200
 beforeRange = list(range(91, 101))
 duringRange = list(range(141, 151))
 afterRange = list(range(191, 201))
-detail = True
+detail = False
 
 track_times = (
     np.arange(T + 1)
@@ -328,9 +328,9 @@ if __name__ == "__main__":
         [0.2, beta, 1.0, fixedBNat100],
     ]
 
-    seeds = list(range(0, 5))
+    seeds = list(range(0, 50))
 
-    if detail and len(seeds) > 10:
+    if detail and len(seeds) > 50:
         print("...this will take very long")
         quit()
     else:
