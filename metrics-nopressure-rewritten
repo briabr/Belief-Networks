@@ -283,6 +283,26 @@ model = sm.Logit(y, X_scaled).fit(
 
 print("\nLOGISTIC REGRESSION RESULTS")
 print(model.summary())
+summary = (
+    res.groupby("eps")[metric_cols]
+    .agg(["mean", "std"])
+)
+
+print(summary.T)
+print("\nEXPECTED INFLUENCE DISTRIBUTION")
+
+print(
+    res.groupby("eps")["expI"]
+    .agg(["mean", "std", "min", "median", "max"])
+)
+for eps in eps_values:
+    print(f"\nExpected influence, eps={eps}")
+
+    print(
+        res.loc[res["eps"] == eps, "expI"]
+        .sort_values()
+        .to_list()
+    )
 # ----------------------------------------------
 # -------    PLOTTING
 # ----------------------------------------------
